@@ -413,7 +413,16 @@ Every query has `WHERE client_id = {value_from_JWT}` injected automatically. The
 
 ---
 
-## 14. Current Status
+## 14. Working Preferences
+
+- **Never commit or push without asking first.** Always ask before running `git commit` or `git push`.
+- Use raw SQL files for schema changes (no Prisma migration).
+- Reference `beastinsights-old` for UI design decisions.
+- Reference `PBI-beastinsights-prod` for DAX measure extraction.
+
+---
+
+## 15. Current Status
 
 **Planning phase complete.** All architecture decisions made. All documents written and committed.
 
