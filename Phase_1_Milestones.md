@@ -1,6 +1,6 @@
 # Phase 1 — Milestones & Deliverables
 
-> Build the complete native reporting engine that converts JSON templates into interactive reports with dynamic filters, all chart types, metric toggles, and sub-second load times.
+> Build the complete native reporting engine that converts JSON templates into interactive reports with dynamic filters, all visual types, metric slicers, and sub-second load times.
 
 ---
 
@@ -15,7 +15,7 @@ M3  Backend Query Engine                       │ can run in parallel
 M4  Frontend Report Renderer                   │
 M5  Data Library from Power BI                 ┘
      ↓
-M6  Report Templates, Filters & Navigation
+M6  Reports, Filters & Navigation
      ↓
 M7  End-to-End Testing & Rollout
 ```
@@ -33,7 +33,7 @@ M7  End-to-End Testing & Rollout
 
 ### What This Is
 
-Create the `report_builder` schema in PostgreSQL with all the tables needed for the entire semantic layer. These tables are the containers that hold the metric catalog, dimension catalog, toggle system, report templates, and all future Phase 2-4 features (saved views, filter presets, dashboards, scheduled reports, user dimension access, client modules).
+Create the `report_builder` schema in PostgreSQL with all the tables needed for the entire semantic layer. These tables are the containers that hold the metric catalog, dimension catalog, toggle system, report templates, and all future Phase 2-4 features (bookmarks, filter presets, dashboards, scheduled reports, user dimension access, client modules).
 
 We create ALL tables upfront — even those used in later phases — because altering schema mid-flight is disruptive. Tables for Phase 2+ simply remain empty until needed.
 
@@ -46,31 +46,29 @@ We create ALL tables upfront — even those used in later phases — because alt
 | `data_sources` | Maps logical names (e.g., `order_summary`) to actual materialized view patterns (e.g., `reporting.order_summary_{client_id}`). Stores the date column name, refresh frequency, and whether the source is active. | Query Engine (M3) |
 | `metrics` | The full metric catalog. Every metric the platform can compute — its unique key, display name, SQL expression, data type, format pattern, category, whether it's derived, its derivation formula, aggregation type. ~100 rows when seeded. | Query Engine (M3), Data Library (M5) |
 | `dimensions` | The full dimension catalog. Every dimension users can group/filter by — its unique key, display name, SQL column expression, which table it joins to, the join condition. ~30 rows when seeded. | Query Engine (M3), Filter System (M6) |
-| `data_source_metrics` | Junction table: which metrics are valid for which data sources. Prevents invalid queries (e.g., can't ask for `ltv_30d` from `hourly_revenue`). | Query Engine (M3) |
-| `data_source_dimensions` | Junction table: which dimensions can be used with which data sources. | Query Engine (M3) |
-| `metric_toggles` | Toggle definitions: the 6 context switches (approval_mode, date_basis, time_granularity, profitability_view, retention_base, display_mode). Stores toggle key, display name, and toggle type. | Query Engine (M3), Filter Bar (M6) |
-| `metric_toggle_options` | Options per toggle (e.g., approval_mode has: standard, organic, net). Stores which option is the default. | Query Engine (M3), Filter Bar (M6) |
+| `data_source_metrics` | Junction table: which metrics are valid for which datasets. Prevents invalid queries (e.g., can't ask for `ltv_30d` from `hourly_revenue`). | Query Engine (M3) |
+| `data_source_dimensions` | Junction table: which dimensions can be used with which datasets. | Query Engine (M3) |
+| `metric_toggles` | Toggle definitions: the 6 context switches (approval_mode, date_basis, time_granularity, profitability_view, retention_base, display_mode). Stores toggle key, display name, and toggle type. | Query Engine (M3), Slicer Panel (M6) |
+| `metric_toggle_options` | Options per toggle (e.g., approval_mode has: standard, organic, net). Stores which option is the default. | Query Engine (M3), Slicer Panel (M6) |
 | `metric_variants` | The SQL override per metric/toggle/option combination. When `approval_mode = organic`, the `approvals` metric uses `SUM(approvals_organic)` instead of `SUM(approvals)`. ~20 variant rows. | Query Engine (M3) |
-| `report_templates` | Stores the JSON layout for each report. Template key, name, category, the full JSONB layout blob, default filters, default date range, required data sources, navigation section and order. | Template API (M6) |
+| `report_templates` | Stores the JSON layout for each report. Template key, name, category, the full JSONB layout blob, default filters, default date range, required datasets, navigation section and order. | Template API (M6) |
 
 **Future Phase Tables (created now, populated later)**
 
 | Table | Phase | Purpose |
 |-------|-------|---------|
-| `saved_views` | Phase 2 | Per-user customizations of a stock report (filters, layout, metrics) |
+| `bookmarks` | Phase 2 | Per-user customizations of a stock report (filters, layout, metrics) |
 | `filter_presets` | Phase 2 | Named, shareable filter combinations |
 | `dashboards` | Phase 2 | Personal dashboard layouts |
-| `dashboard_widgets` | Phase 2 | Pinned widgets on personal dashboards |
+| `dashboard_tiles` | Phase 2 | Pinned tiles on personal dashboards |
 | `scheduled_reports` | Phase 2 | Scheduled email/Telegram delivery configs |
 | `user_dimension_access` | Phase 3 | Maps users to allowed dimension values for row-level security |
 | `client_modules` | Phase 4 | Per-client industry module enablement |
 
-**Schema addition to existing system:**
-- Add `report_mode` column to `beast_insights_v2.clients` table with values `powerbi` (default), `native`, or `both` — controls whether clients see Power BI reports, native reports, or both with a toggle
-
-**Prisma integration:**
-- All new tables are added to the existing Prisma schema using the `multiSchema` preview feature (already enabled)
-- Migration file generated through Prisma's migration system
+**Database creation approach:**
+- All new tables are defined in raw SQL files and executed directly against PostgreSQL
+- After tables are created, run `prisma db pull` to introspect the database and sync the Prisma schema automatically
+- Uses the `multiSchema` preview feature (already enabled) so the new `report_builder` schema coexists with existing schemas
 - No changes to any existing tables or models
 
 ### What You Can Verify
@@ -78,7 +76,7 @@ We create ALL tables upfront — even those used in later phases — because alt
 - Connect to the database, query `report_builder.data_sources` — table exists and is empty (ready to be seeded)
 - Query `report_builder.metrics` — table exists with all columns
 - Check all foreign keys and indexes are created
-- Prisma generates successfully with the new models alongside existing ones
+- Prisma schema reflects the new tables after `prisma db pull`
 - Existing application works exactly as before — zero impact on current functionality
 
 ### What This Does NOT Include
@@ -95,7 +93,7 @@ We create ALL tables upfront — even those used in later phases — because alt
 
 This is a **design milestone**, not a code milestone. It produces a specification document that defines the exact JSON structure used to describe any report. This format is the contract between the backend (which serves templates and resolves queries) and the frontend (which renders templates into interactive UI).
 
-Every possible widget type, chart type, filter type, toggle type, layout type, and configuration option must be defined here. Once this spec is locked, backend and frontend teams can build in parallel with confidence that everything will connect.
+Every possible visual type, chart type, filter type, slicer type, layout type, and configuration option must be defined here. Once this spec is locked, backend and frontend teams can build in parallel with confidence that everything will connect.
 
 ### Deliverables
 
@@ -106,15 +104,15 @@ Every report template JSON has these top-level keys:
 | Key | Type | What It Controls |
 |-----|------|-----------------|
 | `version` | string | Schema version for future compatibility |
-| `source` | string | Primary data source key (e.g., `"order_summary"`) |
+| `source` | string | Primary dataset key (e.g., `"order_summary"`) |
 | `sourceConfig` | object | Source-specific behavior (server-side pagination, search columns, date filter type) |
 | `defaults` | object | Default date range (`"last_7_days"`, `"last_30_days"`, `"today"`, etc.), auto-refresh interval in seconds |
-| `filterBar` | object | Complete filter bar configuration |
+| `slicerPanel` | object | Complete slicer panel configuration |
 | `sections` | array | The ordered list of visual sections that make up the report |
 
-**2. Filter Bar Configuration**
+**2. Slicer Panel Configuration**
 
-The `filterBar` object controls everything in the filter area at the top of the report:
+The `slicerPanel` object controls everything in the filter/slicer area at the top of the report:
 
 | Key | Type | What It Controls |
 |-----|------|-----------------|
@@ -124,13 +122,13 @@ The `filterBar` object controls everything in the filter area at the top of the 
 | `showGroupBy` | boolean | Whether to show the group-by dropdown |
 | `groupByOptions` | string[] | Available dimension keys for group-by (e.g., `["campaign_name", "product_name", "gateway_alias"]`) |
 | `defaultGroupBy` | string | Which dimension is selected by default |
-| `toggles` | array | List of toggle controls to show |
+| `slicers` | array | List of slicer controls to show |
 | `filters` | array | List of dimension filter controls to show |
 | `parameters` | array | List of parameter input controls (for profitability) |
 | `statusFilters` | array | Quick-filter pills with pre-built filter conditions (for Transaction Explorer: All/Approved/Declined/Refunded/Chargeback) |
 | `showExport` | boolean | Whether to show the export button |
 
-**Toggle definition within filterBar:**
+**Slicer definition within slicerPanel:**
 
 | Key | What It Means |
 |-----|--------------|
@@ -138,7 +136,7 @@ The `filterBar` object controls everything in the filter area at the top of the 
 | `position` | `"main"` (always visible) or `"more"` (in a dropdown) |
 | `displayAs` | `"pills"` (horizontal buttons) or `"dropdown"` |
 
-**Filter definition within filterBar:**
+**Filter definition within slicerPanel:**
 
 | Key | What It Means |
 |-----|--------------|
@@ -146,7 +144,7 @@ The `filterBar` object controls everything in the filter area at the top of the 
 | `displayAs` | `"pills"` (few options), `"multiselect"` (many options), `"dropdown"` (single select) |
 | `position` | `"main"` or `"more"` |
 
-**Parameter definition within filterBar:**
+**Parameter definition within slicerPanel:**
 
 | Key | What It Means |
 |-----|--------------|
@@ -168,7 +166,7 @@ Each section in the `sections` array represents a visual block of the report:
 | `title` | string | Optional section heading |
 | `columns` | number | Number of grid columns (for `grid` type) |
 | `conditionalVisibility` | object | Show section only when a specific toggle value is active |
-| `widgets` | array | The widgets inside this section |
+| `visuals` | array | The visuals inside this section |
 
 **Layout types:**
 
@@ -177,7 +175,7 @@ Each section in the `sections` array represents a visual block of the report:
 | `card_row` | Horizontal row of equal-width cards (2-4 per row). Wraps to 2 columns on tablet, 1 on mobile. |
 | `full_width` | Single column, full content width. Used for charts, tables. |
 | `grid` | CSS grid with configurable column count. For side-by-side charts. |
-| `tabs` | Tabbed interface. Each widget becomes a tab. Lazy-loads on selection. |
+| `tabs` | Tabbed interface. Each visual becomes a tab. Lazy-loads on selection. |
 
 **Conditional visibility** — controls which sections appear based on toggle state:
 ```
@@ -188,9 +186,9 @@ Each section in the `sections` array represents a visual block of the report:
 ```
 This means the section only renders when the `profitability_view` toggle is set to `cashflow`.
 
-**4. Widget Types — Complete Specification**
+**4. Visual Types — Complete Specification**
 
-**a) MetricCard**
+**a) Card**
 
 Shows 1-3 formatted metrics with trend indicators.
 
@@ -205,7 +203,7 @@ Display formatting comes from the metric catalog — currency shows `$45,678`, p
 
 **b) Chart**
 
-Recharts-based visualization supporting multiple chart types.
+Tremor-based visualization supporting multiple chart types.
 
 | Config Key | What It Controls |
 |-----------|-----------------|
@@ -217,7 +215,7 @@ Recharts-based visualization supporting multiple chart types.
 | `stacked` | Whether area/bar series stack on top of each other |
 | `showLegend` | Show chart legend |
 
-**c) DataTable**
+**c) Table**
 
 TanStack Table-based interactive table.
 
@@ -234,7 +232,7 @@ TanStack Table-based interactive table.
 | `isDetailTable` | `true` for Transaction Explorer — means it uses `columns` config instead of `dimension`+`metrics` |
 | `columns` | For detail tables: array of `{ key, label, format }` defining exact columns |
 
-**d) PivotTable**
+**d) Matrix**
 
 Cohort/retention matrix with heatmap coloring.
 
@@ -248,7 +246,7 @@ Cohort/retention matrix with heatmap coloring.
 | `maxColumns` | Maximum number of columns to show (e.g., 12 cycles) |
 | `heatmapColors` | `{ low, mid, high }` — color gradient for cells |
 
-**e) WaterfallChart**
+**e) Waterfall**
 
 P&L visualization showing revenue minus costs equals profit.
 
@@ -276,18 +274,18 @@ Status badge based on configurable thresholds.
 | `metric` | Metric key to evaluate |
 | `thresholds` | `{ good: ">= 0.95", warning: ">= 0.90", critical: "< 0.90" }` |
 
-**5. Special Widget Behaviors**
+**5. Special Visual Behaviors**
 
 | Behavior | How It's Expressed in JSON |
 |----------|--------------------------|
 | **Auto-refresh** | `defaults.refreshInterval: 300` (seconds) — TanStack Query refetches on interval |
 | **Server-side pagination** | `sourceConfig.serverSidePagination: true` — backend handles page/offset |
 | **Server-side search** | `sourceConfig.serverSideSearch: true` + `sourceConfig.searchColumns: [...]` |
-| **Cross-source widgets** | Individual widget has `source: "decline_recovery"` overriding the template's default source |
+| **Cross-source visuals** | Individual visual has `source: "decline_recovery"` overriding the template's default source |
 | **Dynamic titles** | `title: "Revenue by {groupBy}"` — placeholder replaced with current group-by selection |
 | **Dynamic X axis** | `xAxis.dimensionKey: "{time_granularity}"` — resolves to `date_day`, `date_week`, or `date_month` based on toggle |
 | **Month selector** | `sourceConfig.dateFilterType: "month_selector"` — shows month dropdown instead of date range |
-| **Compare to previous** | `showTrend: true` + `trendComparison: "previous_period"` on MetricCard |
+| **Compare to previous** | `showTrend: true` + `trendComparison: "previous_period"` on Card |
 | **Inverted trend** | `invertTrend: true` — lower value = green (for cancel rate, CB rate, churn) |
 
 **6. Complete Example Template**
@@ -299,12 +297,12 @@ A minimal but complete Revenue Analytics template showing all concepts:
   "version": "1.0",
   "source": "order_summary",
   "defaults": { "dateRange": "last_30_days" },
-  "filterBar": {
+  "slicerPanel": {
     "showDateRange": true,
     "showGroupBy": true,
     "groupByOptions": ["campaign_name", "product_name", "gateway_alias"],
     "defaultGroupBy": "campaign_name",
-    "toggles": [
+    "slicers": [
       { "toggleKey": "approval_mode", "position": "main", "displayAs": "pills" },
       { "toggleKey": "time_granularity", "position": "main", "displayAs": "pills" }
     ],
@@ -319,10 +317,10 @@ A minimal but complete Revenue Analytics template showing all concepts:
     {
       "id": "summary",
       "type": "card_row",
-      "widgets": [
+      "visuals": [
         {
           "id": "initials_card",
-          "type": "metric_card",
+          "type": "card",
           "title": "Initials",
           "metrics": [
             { "metricKey": "initials", "label": "Count" },
@@ -333,7 +331,7 @@ A minimal but complete Revenue Analytics template showing all concepts:
         },
         {
           "id": "rebills_card",
-          "type": "metric_card",
+          "type": "card",
           "title": "Rebills",
           "metrics": [
             { "metricKey": "rebills", "label": "Count" },
@@ -347,7 +345,7 @@ A minimal but complete Revenue Analytics template showing all concepts:
     {
       "id": "trend",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
           "id": "revenue_trend",
           "type": "chart",
@@ -366,10 +364,10 @@ A minimal but complete Revenue Analytics template showing all concepts:
     {
       "id": "breakdown",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
           "id": "revenue_table",
-          "type": "data_table",
+          "type": "table",
           "title": "Revenue by {groupBy}",
           "dimension": "{groupBy}",
           "metrics": [
@@ -395,11 +393,11 @@ A minimal but complete Revenue Analytics template showing all concepts:
 
 ### What You Can Verify
 
-- The spec covers every widget type needed across all 11 reports
-- The spec covers every filter, toggle, and parameter type
+- The spec covers every visual type needed across all 11 reports
+- The spec covers every filter, slicer, and parameter type
 - A developer can read this spec and build backend or frontend without ambiguity
 - The example template is valid against the spec
-- Every edge case is addressed: dynamic titles, cross-source widgets, conditional visibility, server-side pagination, auto-refresh, month selector, compare to previous period
+- Every edge case is addressed: dynamic titles, cross-source visuals, conditional visibility, server-side pagination, auto-refresh, month selector, compare to previous period
 
 ### What This Does NOT Include
 
@@ -412,14 +410,16 @@ A minimal but complete Revenue Analytics template showing all concepts:
 
 ### What This Is
 
-The generic API that takes any combination of metrics, dimensions, filters, and toggles — and returns formatted data. One endpoint handles every report, every widget, every filter combination. No report-specific backend code.
+The generic API that takes any combination of metrics, dimensions, filters, and toggles — and returns formatted data. One endpoint handles every report, every visual, every filter combination. No report-specific backend code.
+
+**Repo:** `beastinsights-backend` (new repo). Brings over login/auth routes and necessary existing functionality from `beast-insights-backend`. This is a single backend repo that replaces the existing backend for the native reporting subdomain.
 
 ### Deliverables
 
 **1. Single Query Endpoint — `POST /api/v1/query`**
 
 Accepts a request body with:
-- `source` — which data source to query (e.g., `"order_summary"`)
+- `source` — which dataset to query (e.g., `"order_summary"`)
 - `metrics` — array of metric keys (e.g., `["approvals", "revenue", "approval_rate"]`)
 - `dimensions` — array of dimension keys to GROUP BY (e.g., `["campaign_name"]`)
 - `filters` — object containing:
@@ -440,16 +440,16 @@ Returns:
 
 **2. Batch Query Endpoint — `POST /api/v1/query/batch`**
 
-When a user opens a report, the frontend sends ONE HTTP request containing all queries for every widget on the page. The backend executes all queries in parallel and returns results keyed by widget ID.
+When a user opens a report, the frontend sends ONE HTTP request containing all queries for every visual on the page. The backend executes all queries in parallel and returns results keyed by visual ID.
 
 Accepts:
 - `filters` — shared across all queries (date range, dimension filters)
 - `toggles` — shared toggle state
 - `parameters` — shared parameter values
-- `queries` — array of individual query objects, each with a unique `widgetId` plus its own `source`, `metrics`, `dimensions`, and optional overrides
+- `queries` — array of individual query objects, each with a unique `visualId` plus its own `source`, `metrics`, `dimensions`, and optional overrides
 
 Returns:
-- `results` — object keyed by widgetId: `{ "summary_cards": { data, metadata }, "trend_chart": { data, metadata }, ... }`
+- `results` — object keyed by visualId: `{ "summary_cards": { data, metadata }, "trend_chart": { data, metadata }, ... }`
 - `metadata.totalTimeMs` — overall batch execution time
 
 Why this matters: 1 HTTP request instead of 5-10. All queries run in parallel on the backend. Total latency = slowest single query, not sum of all.
@@ -491,12 +491,12 @@ The engine resolves each query through these steps:
 
 **4. Comparison Period Queries**
 
-When a widget has `showTrend: true`:
+When a visual has `showTrend: true`:
 - The engine automatically runs a second query for the comparison period
 - "Last 7 Days" → comparison = the 7 days before that
 - "Last 30 Days" → comparison = the 30 days before that
 - "MTD" → same days last month
-- Returns comparison data alongside main data so MetricCards can show "+12% vs prior"
+- Returns comparison data alongside main data so Cards can show "+12% vs prior"
 
 **5. Security**
 
@@ -506,7 +506,7 @@ When a widget has `showTrend: true`:
 | Cross-tenant access | client_id from JWT token, never from request body. Every query includes tenant filter. |
 | Column injection | Only metric/dimension keys registered in the catalog are queryable. Arbitrary SQL rejected. |
 | Slow query abuse | 30-second timeout per query. Max page size enforced. |
-| Auth bypass | All endpoints protected by existing JWT auth middleware (zero changes to auth code). |
+| Auth bypass | All endpoints protected by existing JWT auth middleware (brought over from `beast-insights-backend`). |
 
 **6. Catalog Cache**
 
@@ -515,7 +515,7 @@ The metric/dimension/toggle catalog is loaded into memory on server startup and 
 ### What You Can Verify
 
 - Single query: request `approvals` and `revenue` grouped by `campaign_name` for `last_7_days` → correct data returns
-- Batch: send 5 queries in one request → all 5 results return in one response, keyed by widgetId
+- Batch: send 5 queries in one request → all 5 results return in one response, keyed by visualId
 - Toggle test: same query with `approval_mode: "standard"` vs `"organic"` → different approval numbers
 - Derived cascade: request `approval_rate` with organic toggle → rate uses organic approvals automatically
 - Parameter test: request `processing_fees` with `processing_fee_pct: 5.0` → correct calculation
@@ -532,6 +532,10 @@ The metric/dimension/toggle catalog is loaded into memory on server startup and 
 
 The complete React component library that renders any report from a JSON template (defined in M2). Generic, reusable components that receive data and configuration — they don't know which report they're in.
 
+**Repo:** `beastinsights` (new empty repo). Separate subdomain deployment. Uses **Tremor** as the primary charting/analytics UI library, and **shadcn** for sidebar, navigation, and components where Tremor lacks coverage.
+
+> **Design reference:** Refer to `beastinsights-old` for UI design patterns, color palette, and layout decisions.
+
 ### Deliverables
 
 **1. State Management Setup**
@@ -539,30 +543,31 @@ The complete React component library that renders any report from a JSON templat
 | System | What It Manages |
 |--------|----------------|
 | **TanStack Query** (new) | All data fetching for native reports. 5-minute stale time — repeat page visits are instant. Handles caching, deduplication, background refetching, loading/error states. |
-| **Zustand** (new) | Report-level UI state: date range, active dimension filters, toggle values, parameter values, group-by selection, compare toggle. Each report page gets its own store instance. When any value changes, TanStack Query automatically refetches affected data. |
-| **Redux** (existing, unchanged) | Auth state, client selection, existing Power BI features. No changes. |
+| **Zustand** (new) | Report-level UI state: date range, active dimension filters, toggle values, parameter values, group-by selection, compare slicer. Each report page gets its own store instance. When any value changes, TanStack Query automatically refetches affected data. |
 
 **2. Data Fetching Hook — `useReportData`**
 
 The bridge between the template JSON, the Zustand filter state, and the backend API:
-1. Reads the template JSON to determine what queries each widget needs
+1. Reads the template JSON to determine what queries each visual needs
 2. Reads current filter/toggle/parameter state from Zustand
-3. Constructs the batch query payload (one widgetId per widget)
+3. Constructs the batch query payload (one visualId per visual)
 4. Passes to TanStack Query which handles caching and fetching
-5. Returns `{ data, isLoading, error }` keyed by widget ID
+5. Returns `{ data, isLoading, error }` keyed by visual ID
 6. When any filter changes in Zustand, TanStack Query detects the dependency change and refetches
 
-**3. Widget Components**
+**3. Visual Components**
 
-| Component | What It Renders | Key Behaviors |
-|-----------|----------------|--------------|
-| **MetricCard** | Summary card with 1-3 metrics. Each shows a formatted value ($45,678 or 72.3% or 1,234) plus optional trend arrow (+12% ▲ in green or -5% ▼ in red). `invertTrend` flips colors for metrics where lower is better (cancel rate, CB rate). | Formats based on metric catalog's `data_type`. Currency = `$`, percentage = `%`, integer = commas. |
-| **Chart** | Recharts wrapper. Line, bar, area, stacked bar, pie, donut. Configurable X axis, multiple series with individual colors, dual Y axes, legend, tooltips. Responds to `{time_granularity}` placeholder in xAxis — switches from daily to weekly to monthly grouping. | Responsive to container width. Theme-aware colors (dark/light). |
-| **DataTable** | TanStack Table wrapper. Sortable columns (click header), pagination (configurable page size), totals row, conditional formatting (red when CB rate > 1%), column toggle (show/hide via dropdown), exportable. Responds to `{groupBy}` placeholder — rows regroup when user changes the group-by selector. | Server-side pagination mode for Transaction Explorer (millions of rows). |
-| **PivotTable** | Cohort/retention matrix. Rows = cohort periods, columns = billing cycles or months. Cells show values with heatmap coloring gradient (configurable colors). Transforms flat data from backend into matrix format on the frontend. | Green-to-red gradient configurable per template. |
-| **WaterfallChart** | P&L visualization. Custom Recharts stacked bar where each bar "hangs" from the previous total. Start bar (Revenue) at top, subtract bars (costs) descend, end bar (Profit) shows the result. | Recalculates when parameter inputs change. |
-| **ParameterInput** | Number input with $ prefix or % suffix. Step controls for precision. Bound to Zustand `parameters` state — changing a value triggers recalculation of all dependent metrics. | Used in Financial Performance report for processing fees, reserve, CB fees, CPA. |
-| **HealthIndicator** | Status badge: green (Good), yellow (Warning), red (Critical) based on configurable thresholds. | Used for MID health, payment success rates. |
+| Component | File | What It Renders | Key Behaviors |
+|-----------|------|----------------|--------------|
+| **CardVisual** | `CardVisual.jsx` | Summary card with 1-3 metrics. Each shows a formatted value ($45,678 or 72.3% or 1,234) plus optional trend arrow (+12% up in green or -5% down in red). `invertTrend` flips colors for metrics where lower is better (cancel rate, CB rate). | Formats based on metric catalog's `data_type`. Currency = `$`, percentage = `%`, integer = commas. |
+| **ChartVisual** | `ChartVisual.jsx` | Tremor chart wrapper. Line, bar, area, stacked bar, pie, donut. Configurable X axis, multiple series with individual colors, dual Y axes, legend, tooltips. Responds to `{time_granularity}` placeholder in xAxis — switches from daily to weekly to monthly grouping. | Responsive to container width. Theme-aware colors (dark/light). |
+| **TableVisual** | `TableVisual.jsx` | TanStack Table wrapper. Sortable columns (click header), pagination (configurable page size), totals row, conditional formatting (red when CB rate > 1%), column toggle (show/hide via dropdown), exportable. Responds to `{groupBy}` placeholder — rows regroup when user changes the group-by selector. | Server-side pagination mode for Transaction Explorer (millions of rows). |
+| **MatrixVisual** | `MatrixVisual.jsx` | Cohort/retention matrix. Rows = cohort periods, columns = billing cycles or months. Cells show values with heatmap coloring gradient (configurable colors). Transforms flat data from backend into matrix format on the frontend. | Green-to-red gradient configurable per template. |
+| **WaterfallVisual** | `WaterfallVisual.jsx` | P&L visualization. Custom Tremor stacked bar where each bar "hangs" from the previous total. Start bar (Revenue) at top, subtract bars (costs) descend, end bar (Profit) shows the result. | Recalculates when parameter inputs change. |
+| **ParameterInput** | `ParameterInput.jsx` | Number input with $ prefix or % suffix. Step controls for precision. Bound to Zustand `parameters` state — changing a value triggers recalculation of all dependent metrics. | Used in Financial Performance report for processing fees, reserve, CB fees, CPA. |
+| **HealthIndicator** | `HealthIndicator.jsx` | Status badge: green (Good), yellow (Warning), red (Critical) based on configurable thresholds. | Used for MID health, payment success rates. |
+
+All visual components live in `components/visuals/`.
 
 **4. Layout Components**
 
@@ -571,7 +576,7 @@ The bridge between the template JSON, the Zustand filter state, and the backend 
 | `CardRow` | Equal-width cards in a horizontal row. 4 per row on desktop, 2 on tablet, 1 on mobile. |
 | `FullWidth` | Single column, full content width. |
 | `Grid` | CSS grid with configurable columns (1-4). |
-| `TabsSection` | Tabbed interface using existing shadcn/ui Tabs. Lazy-loads content when tab is selected. |
+| `TabsSection` | Tabbed interface using shadcn Tabs. Lazy-loads content when tab is selected. |
 
 **5. ReportRenderer Component**
 
@@ -579,27 +584,31 @@ The orchestrator that reads a template JSON and builds the full report:
 1. Iterates through `template.sections[]`
 2. Checks `conditionalVisibility` — skips sections hidden by current toggle state
 3. Renders each section in its layout type
-4. Maps each `widget.type` to the appropriate component
-5. Passes `data[widget.id]` from the batch query response to each widget
-6. Per-widget loading state: shows WidgetSkeleton matching the widget's expected dimensions
-7. Per-widget error state: shows WidgetError with retry button — one widget failing does NOT break the rest of the page
+4. Maps each `visual.type` to the appropriate component
+5. Passes `data[visual.id]` from the batch query response to each visual
+6. Per-visual loading state: shows VisualSkeleton matching the visual's expected dimensions
+7. Per-visual error state: shows VisualError with retry button — one visual failing does NOT break the rest of the page
 
-**6. Dark Mode & Responsive**
+**6. Sidebar & Navigation**
 
-All components support the existing dark/light theme system (no new theme code — uses existing `theme-provider.jsx`). Charts use theme-aware colors. On mobile (<768px), card rows stack, charts resize, tables become horizontally scrollable with a sticky first column. The filter bar collapses into a "Filters" drawer.
+Sidebar and navigation components built with shadcn. Reports organized by category (Monitor/Grow/Retain/Acquire/Profit/Explore).
+
+**7. Dark Mode & Responsive**
+
+All components support the existing dark/light theme system (no new theme code — uses existing `theme-provider.jsx`). Charts use theme-aware colors. On mobile (<768px), card rows stack, charts resize, tables become horizontally scrollable with a sticky first column. The slicer panel collapses into a "Filters" drawer.
 
 ### What You Can Verify
 
-- Render each widget type with sample data — correct display and formatting
-- MetricCard shows "$45,678" not "45678", "72.3%" not "0.723", "+12% ▲" for positive trends
-- Chart renders line, bar, area, pie, stacked bar correctly with legends
-- DataTable sorts by clicking headers, paginates, shows totals row
-- PivotTable shows a proper matrix with heatmap coloring
-- WaterfallChart shows revenue minus costs equals profit
-- Toggle a Zustand value → data refetches automatically
+- Render each visual type with sample data — correct display and formatting
+- CardVisual shows "$45,678" not "45678", "72.3%" not "0.723", "+12% up" for positive trends
+- ChartVisual renders line, bar, area, pie, stacked bar correctly with legends
+- TableVisual sorts by clicking headers, paginates, shows totals row
+- MatrixVisual shows a proper matrix with heatmap coloring
+- WaterfallVisual shows revenue minus costs equals profit
+- Change a Zustand value → data refetches automatically
 - Dark mode toggle → all components re-render with dark colors
 - Mobile viewport (375px) → everything stacks and is usable
-- One widget error → other widgets unaffected
+- One visual error → other visuals unaffected
 
 ---
 
@@ -607,7 +616,7 @@ All components support the existing dark/light theme system (no new theme code �
 
 ### What This Is
 
-This is the research and extraction milestone. We go through every Power BI DAX measure, every dimension relationship, and every toggle/slicer in the existing PBI semantic model — and translate them into SQL expressions stored in the `report_builder` tables created in M1.
+This is the research and extraction milestone. We read the PBI report files from the `PBI-beastinsights-prod` folder, extract every DAX measure, every dimension relationship, and every slicer definition from the existing PBI semantic model — and translate them into SQL expressions stored in the `report_builder` tables created in M1.
 
 This is where the 100+ metric catalog, 30+ dimension catalog, and toggle variant system get populated with real data that matches what Power BI currently calculates.
 
@@ -615,11 +624,15 @@ This is where the 100+ metric catalog, 30+ dimension catalog, and toggle variant
 
 The native reports must produce **exactly the same numbers** as Power BI. If Revenue Analytics shows $427,450 in Power BI, it must show $427,450 in the native version. This milestone ensures 1:1 calculation parity by directly translating every DAX measure to its PostgreSQL equivalent.
 
+### Source
+
+All PBI report files are read from the **`PBI-beastinsights-prod`** folder. This contains the production Power BI semantic model with all DAX measures, dimension relationships, and slicer configurations. The extraction process reads these files to systematically catalog every measure and translate it to SQL.
+
 ### Deliverables
 
 **1. Metric Extraction: DAX → SQL Translation**
 
-We need to translate every DAX measure from the PBI semantic model into a SQL expression that works against the materialized views.
+We read the PBI report files from `PBI-beastinsights-prod` to extract every DAX measure and translate it into a SQL expression that works against the materialized views.
 
 **Sales & Volume Metrics (from `order_summary`):**
 
@@ -711,6 +724,8 @@ We need to translate every DAX measure from the PBI semantic model into a SQL ex
 
 **Total metric count: ~100 metrics** across Sales, Revenue, Rates, Disputes, Profitability, Recovery, Cohort/LTV, Real-Time, and MID Health categories.
 
+All extracted DAX measures are translated to SQL and stored in `report_builder.metrics`.
+
 **2. Dimension Extraction**
 
 Every dimension users can group or filter by, with their JOIN information:
@@ -752,7 +767,7 @@ Direct translation from PBI slicers/parameter tables:
 | Profitability slider tables (`prof_*`) | `parameters` | Numeric inputs | processing_fees, cb_fees, reserve, cpa_cost, gross_profit, gross_margin |
 | `cust_month_year` | `month_selector` | Available months | MID Summary date filtering |
 
-**4. Data Source Mapping**
+**4. Dataset Mapping**
 
 | Source Key | Materialized View Pattern | Primary Date Column | PBI Equivalent Table |
 |-----------|--------------------------|--------------------|--------------------|
@@ -769,14 +784,14 @@ Direct translation from PBI slicers/parameter tables:
 
 **5. Junction Tables**
 
-For each metric, map which data sources it's available in. For each dimension, map which data sources support it. This prevents the query engine from generating invalid SQL (e.g., requesting `ltv_30d` from `hourly_revenue`).
+For each metric, map which datasets it's available in. For each dimension, map which datasets support it. This prevents the query engine from generating invalid SQL (e.g., requesting `ltv_30d` from `hourly_revenue`).
 
 **6. Seed Scripts**
 
 Everything above is encoded into database seed scripts that populate the tables from M1:
 - All ~100 metrics with SQL expressions
 - All ~30 dimensions with column expressions and JOIN info
-- All 10 data sources with table patterns
+- All 10 datasets with table patterns
 - All 6 toggles with options
 - All ~20 metric variants
 - All junction table mappings
@@ -793,11 +808,11 @@ Everything above is encoded into database seed scripts that populate the tables 
 
 ---
 
-## Milestone 6: Report Templates, Filters & Navigation
+## Milestone 6: Reports, Filters & Navigation
 
 ### What This Is
 
-Everything comes together. The 11 stock report templates are created as JSON documents (following the M2 spec), stored in the database, and made accessible through the sidebar. The filter bar is fully wired. Feature flags control which clients see native vs Power BI.
+Everything comes together. The 11 stock report templates are created as JSON documents (following the M2 spec), stored in the database, and made accessible through the sidebar navigation. The slicer panel is fully wired. The frontend is deployed on a separate subdomain as a fresh application.
 
 ### Deliverables
 
@@ -809,13 +824,13 @@ Each template follows the format spec from M2 and references metrics/dimensions 
 |---|--------|----------|---------------|--------------|
 | 1 | Business Command Center | MONITOR | `order_summary` + `hourly_revenue` | Summary cards with trends, hourly revenue chart (today vs 7d avg), daily summary table. Auto-refreshes every 5 min. |
 | 2 | Real-Time Pulse | MONITOR | `hourly_revenue` | Fixed to "today". Running total cards, hourly charts (revenue + success rate), hourly breakdown table. Auto-refreshes. |
-| 3 | Revenue Analytics | GROW | `order_summary` | Toggles: approval_mode, time_granularity. Group by: campaign/product/gateway/sales_type/card_brand. Summary cards (initials/rebills/total/rates), stacked trend chart, full breakdown table with column toggle. |
+| 3 | Revenue Analytics | GROW | `order_summary` | Slicers: approval_mode, time_granularity. Group by: campaign/product/gateway/sales_type/card_brand. Summary cards (initials/rebills/total/rates), stacked trend chart, full breakdown table with column toggle. |
 | 4 | Subscription Intelligence | GROW | `order_summary` | 6-month default. MRR cards, stacked revenue trend (new + recurring), monthly subscriber flow table. |
-| 5 | Customer Lifecycle | GROW | `cohort_summary` + `order_summary` | Toggle: retention_base. LTV cards (30/90/180d), cohort retention heatmap (PivotTable), LTV by acquisition channel table. |
+| 5 | Customer Lifecycle | GROW | `cohort_summary` + `order_summary` | Slicer: retention_base. LTV cards (30/90/180d), cohort retention heatmap (Matrix), LTV by acquisition channel table. |
 | 6 | Churn Analysis | RETAIN | `order_summary` | Group by: product/campaign/billing_cycle. Cancel/CB/refund rate cards (inverted trends), churn trend chart, breakdown table. |
-| 7 | Payment Health & Recovery | RETAIN | `order_summary` + `decline_recovery` | Toggles: approval_mode, time_granularity. Approval rate card, trend chart, recovery table by decline group, approval breakdown table. |
+| 7 | Payment Health & Recovery | RETAIN | `order_summary` + `decline_recovery` | Slicers: approval_mode, time_granularity. Approval rate card, trend chart, recovery table by decline group, approval breakdown table. |
 | 8 | Channel & Acquisition | ACQUIRE | `order_summary` | 90-day default. New customer cards, channel scorecard table with approval/cancel/CB rates per campaign. |
-| 9 | Financial Performance | PROFIT | `order_summary` | Toggle: profitability_view. Parameters: processing %, reserve %, CB fee $, CPA $. P&L waterfall chart (conditional on cashflow view), profit cards, profitability table by product/campaign. |
+| 9 | Financial Performance | PROFIT | `order_summary` | Slicer: profitability_view. Parameters: processing %, reserve %, CB fee $, CPA $. P&L waterfall chart (conditional on cashflow view), profit cards, profitability table by product/campaign. |
 | 10 | Product & Plan Performance | PROFIT | `order_summary` | Product scorecard table with all key metrics, stacked bar chart showing revenue by product over time. |
 | 11 | Transaction Explorer | EXPLORE | `order_details` | Search bar, status filter pills, server-side pagination (50/page), server-side sorting, column toggle, full transaction detail columns. |
 
@@ -832,51 +847,51 @@ Each template follows the format spec from M2 and references metrics/dimensions 
 |----------|---------|
 | `GET /api/v1/filters/options/:dimensionKey` | Distinct values for a dimension, scoped to the authenticated client. Used to populate filter dropdowns. E.g., `/filters/options/campaign_name` → `["Summer Sale", "Google Ads", "Facebook", "Email"]` |
 
-**4. Complete Filter Bar**
+**4. Complete Slicer Panel**
 
-Fully wired filter bar that works across all 11 reports:
+Fully wired slicer panel that works across all 11 reports:
 - **Date range picker** — presets (Today, Last 7/14/30/90 Days, MTD, QTD, YTD, Last Month) + custom calendar
 - **Dimension filter dropdowns** — populated from the filter options API, multiselect with search
-- **Toggle controls** — pills or dropdown depending on template config
+- **Slicer controls** — pills or dropdown depending on template config
 - **Parameter inputs** — number fields with $/% for profitability
 - **Group-by selector** — dropdown of available dimensions per report
-- **Compare toggle** — enables previous period comparison on MetricCards
+- **Compare slicer** — enables previous period comparison on Cards
 - **Search bar** — for Transaction Explorer
 - **Status filter pills** — for Transaction Explorer (All/Approved/Declined/Refunded/Chargeback)
 
-All filter changes write to the Zustand store → TanStack Query detects the change → new batch query fires → all widgets update. The cycle completes in ~200-400ms.
+All filter changes write to the Zustand store → TanStack Query detects the change → new batch query fires → all visuals update. The cycle completes in ~200-400ms.
 
 **5. Dynamic Report Page**
 
-Single Next.js route (`/reports/native/[reportSlug]`) that:
+Single route (`/reports/[reportSlug]`) that:
 1. Reads the slug from URL
 2. Fetches the template from the API
 3. Creates a Zustand store for this report's filter state
-4. Renders FilterBar + ReportRenderer
+4. Renders SlicerPanel + ReportRenderer
 5. Manages loading skeleton and error states
 
-**6. Navigation & Feature Flags**
+**6. Navigation**
 
-Sidebar changes based on the client's `report_mode`:
-- `powerbi` — existing behavior, routes to Power BI pages (default for all clients initially)
-- `native` — sidebar routes to `/reports/native/{template_key}`, organized by category (Monitor/Grow/Retain/Acquire/Profit/Explore)
-- `both` — both routing options available, with a toggle for users to switch between views
-
-Superadmin can change any client's `report_mode` to control rollout.
+Fresh sidebar navigation built with shadcn (new frontend repo on separate subdomain). Reports organized by category:
+- **Monitor:** Business Command Center, Real-Time Pulse
+- **Grow:** Revenue Analytics, Subscription Intelligence, Customer Lifecycle
+- **Retain:** Churn Analysis, Payment Health & Recovery
+- **Acquire:** Channel & Acquisition
+- **Profit:** Financial Performance, Product & Plan Performance
+- **Explore:** Transaction Explorer
 
 ### What You Can Verify
 
 - Navigate to each of the 11 reports → renders with real data from the seeded data library
 - Revenue Analytics: change date to Last 30 Days → numbers update
-- Revenue Analytics: switch Approval Mode to "First Attempt" → approval numbers change across all widgets
+- Revenue Analytics: switch Approval Mode to "First Attempt" → approval numbers change across all visuals
 - Revenue Analytics: change Group By from Campaign to Product → table rows change
 - Financial Performance: change Processing Fee from 3.5% to 5% → profit numbers change, waterfall chart updates
 - Customer Lifecycle: cohort heatmap shows matrix with colored cells
 - Transaction Explorer: search by email → matching transactions appear. Paginate → page 2 shows different rows.
 - Command Center: leave page open 5+ minutes → data refreshes silently
 - Filter dropdowns populate with real dimension values from the database
-- Switch client to `native` mode → sidebar shows category-organized native reports
-- Switch client to `powerbi` mode → sidebar shows existing Power BI pages
+- Sidebar navigation shows all 11 reports organized by category
 
 ---
 
@@ -884,13 +899,13 @@ Superadmin can change any client's `report_mode` to control rollout.
 
 ### What This Is
 
-Everything from M1-M6 is functional. This milestone validates performance, verifies data accuracy against Power BI, hardens error handling, and prepares for safe client-by-client migration.
+Everything from M1-M6 is functional. This milestone validates performance, verifies data accuracy against Power BI, hardens error handling, and prepares for client rollout on the new subdomain.
 
 ### Deliverables
 
 **1. Performance Validation**
 
-Target: every report loads in under 500ms (navigation click to all widgets rendered with data).
+Target: every report loads in under 500ms (navigation click to all visuals rendered with data).
 
 Expected breakdown:
 | Step | Target |
@@ -906,17 +921,17 @@ If any report exceeds 500ms:
 - Profile with `EXPLAIN ANALYZE` to find slow queries
 - Add missing indexes on materialized views (most common fix)
 - Optimize complex derived metric SQL expressions
-- Reduce widget count per page if excessive
+- Reduce visual count per page if excessive
 
 **2. Data Accuracy Validation**
 
 The single most important test. For each of the 11 reports:
 - Open the native report and the equivalent Power BI report side by side
-- Same client, same date range, same filters, same toggles
+- Same client, same date range, same filters, same slicers
 - Compare every summary card number, every chart data point, every table row
 - Numbers must match exactly (or within rounding tolerance for percentages)
 - Document any discrepancy, find the root cause, fix it
-- **No client gets migrated until accuracy is verified**
+- **No client gets access until accuracy is verified**
 
 Specific comparisons:
 | Native Report | PBI Page to Compare Against | Key Numbers to Match |
@@ -928,30 +943,30 @@ Specific comparisons:
 | Churn Analysis | CB & Refunds page | CB rate, refund rate, cancel rate per product |
 | Transaction Explorer | Order Details page | Row counts, amounts, statuses match |
 
-Toggle comparisons:
+Slicer comparisons:
 - Switch to organic approval mode in both native and PBI → numbers must match
 - Switch date basis to CB date in both → CB numbers must match
 
 **3. Frontend Performance Optimization**
 
-- Widget components wrapped in `React.memo` — prevents re-renders when sibling widgets update
-- Heavy components (Charts, DataTables) loaded via `React.lazy` + `Suspense` — code splitting
+- Visual components wrapped in `React.memo` — prevents re-renders when sibling visuals update
+- Heavy components (Charts, Tables) loaded via `React.lazy` + `Suspense` — code splitting
 - Large tables use `react-window` (already installed) for virtual scrolling
-- Template JSON prefetched on sidebar hover (Next.js prefetching)
-- Skeleton loaders match widget dimensions — no layout shift when data loads
+- Template JSON prefetched on sidebar hover
+- Skeleton loaders match visual dimensions — no layout shift when data loads
 
 **4. Error Resilience**
 
 | Scenario | Behavior |
 |----------|---------|
-| One widget query fails | That widget shows error with retry button. All others work. |
+| One visual query fails | That visual shows error with retry button. All others work. |
 | Entire batch fails | Page shows error with "Retry All". |
 | Backend down | TanStack Query retries 3x. Shows cached data if available from previous load. |
-| Query exceeds 30s | Widget shows "Query timed out — try a narrower date range." |
-| No data for date range | Widgets show empty state: "No data for this period." |
+| Query exceeds 30s | Visual shows "Query timed out — try a narrower date range." |
+| No data for date range | Visuals show empty state: "No data for this period." |
 | Template not found | Page shows "Report not available." |
 
-Per-widget error boundaries ensure one broken widget never crashes the page.
+Per-visual error boundaries ensure one broken visual never crashes the page.
 
 **5. Mobile Responsiveness**
 
@@ -959,32 +974,31 @@ All 11 reports checked on mobile (375px viewport):
 - Card rows: 2 columns on tablet, 1 on mobile
 - Charts: resize to viewport width
 - Tables: horizontal scroll with sticky first column
-- Filter bar: collapses into a "Filters" button → opens a drawer/sheet
-- Toggle pills: wrap to multiple lines
+- Slicer panel: collapses into a "Filters" button → opens a drawer/sheet
+- Slicer pills: wrap to multiple lines
 
 **6. Monitoring**
 
 Every query is logged:
-- Client ID, data source, metric count, dimension count
+- Client ID, dataset, metric count, dimension count
 - Execution time (ms)
 - Error status
 - Total rows returned
 
 Admin visibility into:
-- P50 / P95 / P99 query latencies per data source
+- P50 / P95 / P99 query latencies per dataset
 - Error rate per report
 - Most queried reports and metrics
 
 **7. Rollout Plan**
 
 Recommended sequence:
-1. Switch internal demo account (Beast Demo) to `both` mode
-2. Internal team validates all 11 reports over 1 week
-3. Switch 2-3 beta clients to `both` mode
+1. Deploy `beastinsights` frontend to the new subdomain and `beastinsights-backend` to its endpoint
+2. Internal team (Beast Demo account) validates all 11 reports over 1 week
+3. Grant 2-3 beta clients access to the new subdomain
 4. Gather feedback, fix issues
-5. Switch validated clients to `native` mode (Power BI disabled)
-6. Gradually roll out to remaining clients
-7. Eventually decommission Power BI workspace (end of rollout)
+5. Gradually roll out access to remaining clients
+6. Eventually decommission Power BI workspace (end of rollout)
 
 ### What You Have at the End of Phase 1
 
@@ -992,7 +1006,7 @@ Recommended sequence:
 A fully functional native reporting platform:
 
   11 interactive reports with real data
-  ~100 queryable metrics across 10 data sources
+  ~100 queryable metrics across 10 datasets
   ~30 filterable dimensions
   6 metric toggles with automatic variant cascading
   Dynamic filters, group-by, and compare to previous period
@@ -1005,11 +1019,11 @@ A fully functional native reporting platform:
   Dark mode and mobile responsive
   <500ms page load
   Validated data accuracy vs Power BI
-  Per-client feature flag for safe rollout
-  Power BI running in parallel until fully migrated
+  Separate subdomain deployment (beastinsights + beastinsights-backend)
+  Tremor + shadcn UI component library
   Zero changes to existing login, auth, or billing code
 
-Ready for Phase 2: Custom Report Builder, saved views, filter presets,
+Ready for Phase 2: Custom Report Builder, bookmarks, filter presets,
                     scheduled delivery, role-based page access
 ```
 

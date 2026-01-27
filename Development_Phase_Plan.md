@@ -1,6 +1,6 @@
 # Beast Insights — Development Phase Plan
 
-> Complete technical blueprint for migrating from Power BI to a native JSON-driven reporting platform.
+> Complete technical blueprint for building a native JSON-driven reporting platform on a separate subdomain.
 
 ---
 
@@ -15,45 +15,39 @@
 7. [Report JSON Templates](#7-report-json-templates)
 8. [API Endpoints](#8-api-endpoints)
 9. [Performance Strategy](#9-performance-strategy)
-10. [Integration with Existing System](#10-integration-with-existing-system)
 
 ---
 
 ## 1. Tech Stack
 
-**Existing stack is solid. No framework changes needed.**
+**New repos built from scratch. Separate subdomain deployment.**
 
 | Layer | Technology | Status |
 |-------|-----------|--------|
-| Frontend | Next.js 16 + React 19 | Keep |
-| UI Components | Radix UI + shadcn/ui + Tailwind CSS | Keep |
-| Charts | Recharts (already installed) | Keep |
-| Tables | TanStack React Table v8 (already installed) | Keep |
-| Backend | Express.js 4.19 | Keep |
-| ORM (app layer) | Prisma 5.19 | Keep for CRUD |
-| Query Engine | `pg` driver (already installed) | Use for dynamic SQL |
-| Database | PostgreSQL | Keep |
-| Auth | JWT HS512 + bcrypt | Keep unchanged |
-| Existing State | Redux Toolkit + Redux Persist | Keep for auth/client |
+| Frontend | Next.js 16 + React 19 | New repo: `beastinsights` |
+| UI Components (analytics) | **Tremor** | Primary library for cards, charts, tables |
+| UI Components (navigation/inputs) | Radix UI + shadcn/ui + Tailwind CSS | Sidebar, inputs, popovers where Tremor lacks |
+| Tables | TanStack React Table v8 | Tremor's Table wraps this |
+| Backend | Express.js 4.19 | New repo: `beastinsights-backend` |
+| ORM (app layer) | Prisma 5.19 | For CRUD operations |
+| Query Engine | `pg` driver | For dynamic SQL |
+| Database | PostgreSQL | Shared database, new `report_builder` schema |
+| Auth | JWT HS512 + bcrypt | Brought over from `beast-insights-backend` |
 
-**New additions for Phase 1:**
+> **Note:** Tremor is the primary analytics visual library (cards, charts, tables). Use shadcn/ui for navigation, sidebar, form inputs, and other UI elements where Tremor does not provide a component.
+
+**New additions:**
 
 | Addition | Purpose |
 |----------|---------|
 | `@tanstack/react-query` | Server state management + frontend cache (Layer 1) |
-| `zustand` | Lightweight UI state for report filters/toggles/parameters |
+| `zustand` | All client state management (filters, UI state, auth) |
 
-**NOT needed in Phase 1:**
-- Redis (materialized views are already pre-computed; with proper indexes, queries return in 10-50ms)
-- WebSockets (add later for real-time features)
-- Socket.io (Phase 4)
+**State management:**
+- **Zustand** — auth state, client selection, report filter state, slicer state, parameter values, UI state
+- **TanStack Query** — all data fetching for reports with 5-min stale time
 
-**State management coexistence:**
-- **Redux** — auth state, client selection, existing Power BI features (unchanged)
-- **Zustand** — report filter state, toggle state, parameter values, UI state (new)
-- **TanStack Query** — all data fetching for native reports with 5-min stale time (new)
-
-No existing Redux code needs to change. The `clientId` used by the query engine comes from the existing Redux `clientSlice`, bridged via a custom hook.
+**Custom Tremor theme:** Configure Tremor's theme to match existing Beast Insights brand colors from `beastinsights-old`.
 
 ---
 
@@ -65,16 +59,15 @@ No existing Redux code needs to change. The `clientId` used by the query engine 
 **Scope:**
 - `report_builder` PostgreSQL schema with full semantic layer
 - Query Engine: `POST /api/v1/query` and `/api/v1/query/batch`
-- Frontend report renderer (JSON template -> React widgets)
-- All widget types: MetricCard, Chart, DataTable, PivotTable, SummaryTable, WaterfallChart
-- FilterBar: date range, dimension filters, toggles, parameters, group-by
-- Metric variants system (5 toggle types) fully operational
-- 11 stock report templates seeded in DB (Custom Report Builder is Phase 2)
-- Feature-flagged rollout: Power BI continues, native reports opt-in per client
+- Frontend report renderer (JSON template -> React visuals)
+- All visual types: Card, Chart, Table, Matrix, SummaryTable, Waterfall
+- Slicer Panel: date range, dimension filters, slicers, parameters, group-by
+- Metric variants system (5 slicer types) fully operational
+- 11 stock reports seeded in DB (Custom Report Builder is Phase 2)
 - TanStack Query frontend caching (Layer 1)
 - Target: <500ms page load
 
-**Deliverable:** All 11 universal reports running natively with real data, dynamic filters, toggle support, and sub-second load times.
+**Deliverable:** All 11 universal reports running natively with real data, dynamic filters, slicer support, and sub-second load times.
 
 ---
 
@@ -84,14 +77,14 @@ No existing Redux code needs to change. The `clientId` used by the query engine 
 **Scope:**
 - Custom Report Builder (drag-and-drop from metric/dimension catalog)
 - Saved filter presets (named, shareable across reports)
-- Saved views (per-user customizations per report)
-- Personal dashboards (pin widgets from any report, react-grid-layout)
+- Bookmarks (per-user customizations per report)
+- Personal dashboards (pin tiles from any report, react-grid-layout)
 - Export: CSV, Excel, PDF
 - Scheduled report delivery (email/Telegram)
 - Role-based page access (admin assigns which reports each role sees)
 - Notification system (threshold alerts, report-level triggers)
 
-**Deliverable:** Users create custom reports, save views, share presets, set up scheduled delivery. Admins control page access per role.
+**Deliverable:** Users create custom reports, save bookmarks, share presets, set up scheduled delivery. Admins control page access per role.
 
 ---
 
@@ -107,7 +100,7 @@ No existing Redux code needs to change. The `clientId` used by the query engine 
 - Audit logging for access control changes
 - Client-level defaults (new users inherit default dimension access)
 
-**Deliverable:** Admin creates a user restricted to Gateway 7 and Campaign "Summer Sale". Every query, every report, every widget is automatically filtered. Zero data leakage.
+**Deliverable:** Admin creates a user restricted to Gateway 7 and Campaign "Summer Sale". Every query, every report, every visual is automatically filtered. Zero data leakage.
 
 ---
 
@@ -132,25 +125,27 @@ No existing Redux code needs to change. The `clientId` used by the query engine 
 
 ### Milestone 1: Database Schema & Semantic Layer
 
-**Goal:** Create the `report_builder` schema and seed the full metric/dimension/toggle catalog.
+**Goal:** Create the `report_builder` schema and seed the full metric/dimension/slicer catalog.
 
 **Tasks:**
 1. Create `report_builder` schema with all tables (full SQL in Section 4)
-2. Add Prisma models for the new schema (uses existing `multiSchema` preview feature)
+2. Run raw SQL to create schema, then `prisma db pull` to generate Prisma models
 3. Write seed script for data sources (10 materialized view types)
 4. Write seed script for metrics (~100 metrics)
 5. Write seed script for dimensions (~30 dimensions)
-6. Write seed script for toggles, toggle options, and metric variants
+6. Write seed script for slicers, slicer options, and metric variants
 7. Write seed script for data_source_metrics and data_source_dimensions junction tables
 
 **Files to create:**
 ```
-beast-insights-backend/
+beastinsights-backend/
   prisma/
-    migrations/YYYYMMDD_report_builder_schema/migration.sql
+    sql/create_report_builder_schema.sql
     seed-report-builder.js
-  prisma/schema.prisma (modify - add new models)
+  prisma/schema.prisma (generated via prisma db pull)
 ```
+
+**Note:** No Prisma migration. Use raw SQL files to create the `report_builder` schema, then run `prisma db pull` to introspect and generate the Prisma schema.
 
 **Testable:** Query `report_builder.metrics` returns full catalog. Variant lookup for `(approvals, approval_mode, organic)` returns `SUM(approvals_organic)`.
 
@@ -160,7 +155,7 @@ beast-insights-backend/
 
 ### Milestone 2: Query Engine & Batch API
 
-**Goal:** Build the generic query engine that translates metric/dimension/filter/toggle requests into parameterized SQL.
+**Goal:** Build the generic query engine that translates metric/dimension/filter/slicer requests into parameterized SQL.
 
 **Tasks:**
 1. Create `db/queryPool.js` - dedicated `pg` connection pool (separate from Prisma)
@@ -173,12 +168,12 @@ beast-insights-backend/
    - `responseFormatter.js` - formats raw rows with proper types
    - `batchExecutor.js` - runs multiple queries via `Promise.all()`
 3. Create routes + controller for query endpoints
-4. Register in `routes/handleRequests.js`
+4. Register routes in Express app
 5. Security: parameterized queries, client isolation from JWT, column whitelisting, 30s timeout
 
 **Files to create:**
 ```
-beast-insights-backend/
+beastinsights-backend/
   db/queryPool.js
   services/queryEngine/
     index.js
@@ -191,10 +186,9 @@ beast-insights-backend/
     batchExecutor.js
   routes/queryRoutes.js
   controller/queryController.js
-  routes/handleRequests.js (modify - add 1 line)
 ```
 
-**Testable:** POST `/api/v1/query` with metrics/dimensions/filters returns correct data. Batch 5 queries in one call. Toggle test returns different values.
+**Testable:** POST `/api/v1/query` with metrics/dimensions/filters returns correct data. Batch 5 queries in one call. Slicer test returns different values.
 
 **Dependencies:** Milestone 1
 
@@ -205,11 +199,11 @@ beast-insights-backend/
 **Goal:** All React components needed to render any report from a JSON template.
 
 **Tasks:**
-1. Install `@tanstack/react-query` and `zustand`
+1. Install `@tanstack/react-query`, `zustand`, and `@tremor/react`
 2. Add `QueryClientProvider` in `app/providers.jsx`
 3. Create Zustand stores for filter and UI state
 4. Build `useReportData` hook (template + filters -> batch query -> TanStack Query)
-5. Build all widget components
+5. Build all visual components
 6. Build `ReportRenderer` component
 7. Build section layout components
 
@@ -222,26 +216,28 @@ beastinsights/
   hooks/
     useReportData.js
     useReportTemplate.js
-  components/native-reports/
+  components/
     ReportRenderer.jsx
     ReportPage.jsx
+    SlicerPanel.jsx
     layouts/
       Section.jsx
       CardRow.jsx
       Grid.jsx
       FullWidth.jsx
       TabsSection.jsx
-    widgets/
-      MetricCard.jsx
-      Chart.jsx
-      DataTable.jsx
-      PivotTable.jsx
+    visuals/
+      CardVisual.jsx
+      ChartVisual.jsx
+      TableVisual.jsx
+      MatrixVisual.jsx
       SummaryTable.jsx
-      WaterfallChart.jsx
+      WaterfallVisual.jsx
       ParameterInput.jsx
       HealthIndicator.jsx
-    FilterBar.jsx
-    ToggleControl.jsx
+      VisualSkeleton.jsx
+      VisualError.jsx
+    SlicerControl.jsx
     DateRangePicker.jsx
     DimensionFilter.jsx
     GroupBySelector.jsx
@@ -252,68 +248,66 @@ beastinsights/
   package.json (modify)
 ```
 
-**Testable:** Render a hardcoded template with mock data. All widget types display correctly. Changing Zustand state triggers TanStack Query refetch.
+**Testable:** Render a hardcoded template with mock data. All visual types display correctly. Changing Zustand state triggers TanStack Query refetch.
 
 **Dependencies:** Milestone 2 (for real data; can start with mock data while M2 is in progress)
 
 ---
 
-### Milestone 4: Filter Bar & Filter Options API
+### Milestone 4: Slicer Panel & Filter Options API
 
-**Goal:** Complete filter system - date range, dimension filters, toggles, parameters, group-by.
+**Goal:** Complete filter system - date range, dimension filters, slicers, parameters, group-by.
 
 **Tasks:**
 1. Build filter options API on backend (`GET /api/v1/filters/options/:dimensionKey`)
-2. Build the `FilterBar` component with:
+2. Build the `SlicerPanel` component with:
    - Date range picker with presets (today, last 7d, last 30d, MTD, QTD, YTD, custom)
    - Dimension filter dropdowns (populated via API)
-   - Toggle controls (pills for metric_variant, dropdown for dimension_switch)
+   - Slicer controls (pills for metric_variant, dropdown for dimension_switch)
    - Parameter inputs (number inputs with $/% for profitability)
    - GroupBy selector
-   - Compare toggle (vs previous period)
+   - Compare slicer (vs previous period)
    - Export button (skeleton for Phase 2)
 3. Wire filter state changes to Zustand store -> TanStack Query refetch
 4. Build comparison period logic (auto-calculate previous period from current date range)
 
 **Files to create:**
 ```
-beast-insights-backend/
+beastinsights-backend/
   routes/filterOptionRoutes.js
   controller/filterOptionController.js
   services/filterOptionService.js
 
 beastinsights/
-  components/native-reports/
-    FilterBar.jsx (complete implementation)
-    ToggleControl.jsx
+  components/
+    SlicerPanel.jsx (complete implementation)
+    SlicerControl.jsx
     DimensionFilter.jsx
     DateRangePicker.jsx
     GroupBySelector.jsx
     CompareToggle.jsx
 ```
 
-**Testable:** Filter dropdowns populate with real dimension values. Changing date range updates all widgets. Toggling approval_mode changes numbers. Parameter inputs affect profitability calculations.
+**Testable:** Filter dropdowns populate with real dimension values. Changing date range updates all visuals. Toggling approval_mode changes numbers. Parameter inputs affect profitability calculations.
 
 **Dependencies:** Milestone 2 (backend), Milestone 3 (frontend components)
 
 ---
 
-### Milestone 5: Report Templates & Navigation Integration
+### Milestone 5: Report Templates & Navigation
 
-**Goal:** All 11 stock report JSON templates seeded in DB, template API, and sidebar routing.
+**Goal:** All 11 stock report JSON templates seeded in DB, template API, and routing.
 
 **Tasks:**
 1. Build template API (`GET /api/v1/reports/templates` and `GET /api/v1/reports/templates/:key`)
 2. Create all 11 JSON templates (full JSON in Section 7)
 3. Write seed script for templates
-4. Create Next.js dynamic route `app/(user-type)/(user)/reports/native/[reportSlug]/page.js`
-5. Add `report_mode` to client configuration (`powerbi` | `native` | `both`)
-6. Integrate with sidebar: map existing nav items to native report slugs
-7. Feature flag: when `report_mode = 'both'`, show toggle in toolbar
+4. Create Next.js dynamic route `app/(user-type)/(user)/reports/[reportSlug]/page.js`
+5. Build sidebar navigation linking to report slugs
 
 **Files to create:**
 ```
-beast-insights-backend/
+beastinsights-backend/
   routes/templateRoutes.js
   controller/templateController.js
   services/templateService.js
@@ -321,11 +315,11 @@ beast-insights-backend/
   prisma/seed-templates.js
 
 beastinsights/
-  app/(user-type)/(user)/reports/native/[reportSlug]/page.js
-  components/sidebar/AppSidebar.jsx (modify)
+  app/(user-type)/(user)/reports/[reportSlug]/page.js
+  components/sidebar/AppSidebar.jsx
 ```
 
-**Testable:** Navigate to `/reports/native/revenue-analytics` and see the full report with real data. All 11 reports render. Feature flag controls which mode each client uses.
+**Testable:** Navigate to `/reports/revenue-analytics` and see the full report with real data. All 11 reports render.
 
 **Dependencies:** Milestones 1-4
 
@@ -337,21 +331,21 @@ beastinsights/
 
 **Tasks:**
 1. **MID Performance** - MonthSelector component; query engine recognizes `dateFilterType: "month_selector"`
-2. **LTV/Retention** - PivotTable transforms flat cohort rows into matrix with heatmap coloring
+2. **LTV/Retention** - Matrix transforms flat cohort rows into matrix with heatmap coloring
 3. **Command Center** - auto-refresh via TanStack Query `refetchInterval` (5 min)
-4. **Transaction Explorer** - server-side pagination, sorting, search; column toggle
+4. **Transaction Explorer** - server-side pagination, sorting, search; column slicer
 5. **Waterfall chart** - Financial Performance: Revenue -> minus costs -> Gross Profit
-6. **Compare to previous period** - MetricCards show "+12% vs last period"; query engine runs comparison query
-7. **Cross-source reports** - different widgets query different materialized views (handled by batch)
+6. **Compare to previous period** - Cards show "+12% vs last period"; query engine runs comparison query
+7. **Cross-source reports** - different visuals query different materialized views (handled by batch)
 8. **"Needs Attention" section** - Command Center anomaly detection (simple threshold-based for Phase 1)
 
 **Files to create/modify:**
 ```
 beastinsights/
-  components/native-reports/widgets/
+  components/visuals/
     MonthSelector.jsx
-    PivotTable.jsx (enhance for heatmap)
-    WaterfallChart.jsx (custom Recharts stacked bar)
+    MatrixVisual.jsx (enhance for heatmap)
+    WaterfallVisual.jsx (custom Tremor stacked bar)
   hooks/
     useComparisonData.js
     useServerPagination.js
@@ -363,20 +357,19 @@ beastinsights/
 
 ---
 
-### Milestone 7: Performance, Testing & Migration Readiness
+### Milestone 7: Performance, Testing & Launch Readiness
 
-**Goal:** Hit <500ms target, validate data accuracy, prepare for client rollout.
+**Goal:** Hit <500ms target, validate data accuracy, prepare for launch.
 
 **Tasks:**
 1. **Performance profiling** - instrument query times, add missing indexes on materialized views
-2. **Frontend optimization** - React.lazy for widgets, React.memo, react-window for large tables
-3. **Data validation** - compare metric values between Power BI and native for same date ranges
-4. **Error resilience** - per-widget error boundaries, query timeout handling
-5. **Feature flag UI** - superadmin panel to switch clients between powerbi/native/both
-6. **Monitoring** - log query execution times, error rates per data source
-7. **Mobile responsiveness** - widgets stack vertically on small viewports
+2. **Frontend optimization** - React.lazy for visuals, React.memo, react-window for large tables
+3. **Data validation** - compare metric values against known-correct data for same date ranges
+4. **Error resilience** - per-visual error boundaries, query timeout handling
+5. **Monitoring** - log query execution times, error rates per data source
+6. **Mobile responsiveness** - visuals stack vertically on small viewports
 
-**Testable:** All 11 reports load in <500ms. Same metrics match Power BI values. Mobile layout works. Error boundaries catch widget failures without crashing the page.
+**Testable:** All 11 reports load in <500ms. Metric values match expected data. Mobile layout works. Error boundaries catch visual failures without crashing the page.
 
 **Dependencies:** Milestones 1-6
 
@@ -394,7 +387,7 @@ M2 (Query Engine & API)
 M3 (Frontend Rendering) --- can start with mock data while M2 builds
  |
  v
-M4 (Filter Bar & Filter API)
+M4 (Slicer Panel & Filter API)
  |
  v
 M5 (Templates & Navigation)
@@ -403,7 +396,7 @@ M5 (Templates & Navigation)
 M6 (Specialized Reports)
  |
  v
-M7 (Performance & Migration)
+M7 (Performance & Launch)
 ```
 
 Backend team: M1 -> M2 in sequence. Frontend team: start M3 with mock data while backend finishes M2. They converge at M4.
@@ -426,6 +419,8 @@ PostgreSQL Database: postgres
 ```
 
 ### 4.2 New Schema: report_builder
+
+**Note:** Create via raw SQL files, then run `prisma db pull` to generate Prisma models. No Prisma migration.
 
 ```sql
 -- ================================================================
@@ -594,9 +589,9 @@ CREATE TABLE report_builder.report_templates (
 );
 
 -- ================================================================
--- SAVED VIEWS (Phase 2 - create table now, use later)
+-- BOOKMARKS (Phase 2 - create table now, use later)
 -- ================================================================
-CREATE TABLE report_builder.saved_views (
+CREATE TABLE report_builder.bookmarks (
     id SERIAL PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
     description TEXT,
@@ -648,12 +643,12 @@ CREATE TABLE report_builder.dashboards (
 );
 
 -- ================================================================
--- DASHBOARD WIDGETS (Phase 2 - create table now)
+-- DASHBOARD TILES (Phase 2 - create table now)
 -- ================================================================
-CREATE TABLE report_builder.dashboard_widgets (
+CREATE TABLE report_builder.dashboard_tiles (
     id SERIAL PRIMARY KEY,
     dashboard_id INTEGER REFERENCES report_builder.dashboards(id),
-    widget_type VARCHAR(50) NOT NULL,
+    visual_type VARCHAR(50) NOT NULL,
     title VARCHAR(200),
     data_source_key VARCHAR(100),
     metrics JSONB,
@@ -661,13 +656,13 @@ CREATE TABLE report_builder.dashboard_widgets (
     filters JSONB,
     date_range VARCHAR(50),
     chart_type VARCHAR(50),
-    widget_config JSONB,
+    tile_config JSONB,
     grid_x INTEGER,
     grid_y INTEGER,
     grid_w INTEGER,
     grid_h INTEGER,
     source_report_id INTEGER,
-    source_widget_key VARCHAR(100),
+    source_visual_key VARCHAR(100),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -680,7 +675,7 @@ CREATE TABLE report_builder.scheduled_reports (
     id SERIAL PRIMARY KEY,
     name VARCHAR(200),
     report_template_id INTEGER,
-    saved_view_id INTEGER,
+    bookmark_id INTEGER,
     user_id INTEGER NOT NULL,
     client_id INTEGER NOT NULL,
     frequency VARCHAR(50) NOT NULL,
@@ -742,7 +737,7 @@ CREATE INDEX idx_variants_metric ON report_builder.metric_variants(metric_id);
 CREATE INDEX idx_variants_toggle ON report_builder.metric_variants(toggle_id);
 CREATE INDEX idx_templates_key ON report_builder.report_templates(template_key);
 CREATE INDEX idx_templates_type ON report_builder.report_templates(template_type);
-CREATE INDEX idx_saved_views_user ON report_builder.saved_views(user_id, client_id);
+CREATE INDEX idx_bookmarks_user ON report_builder.bookmarks(user_id, client_id);
 CREATE INDEX idx_filter_presets_user ON report_builder.filter_presets(user_id, client_id);
 CREATE INDEX idx_dashboards_user ON report_builder.dashboards(user_id, client_id);
 CREATE INDEX idx_uda_user ON report_builder.user_dimension_access(user_id, client_id);
@@ -879,15 +874,17 @@ WHERE m.metric_key = 'refund_dollar' AND t.toggle_key = 'date_basis';
 
 ## 5. Backend Architecture
 
-### 5.1 New Folder Structure
+### 5.1 New Repo Structure
+
+The `beastinsights-backend` repo is built from scratch. It brings over auth middleware (JWT verification), login/register/password routes, and user CRUD from `beast-insights-backend`. Everything else is built new.
 
 ```
-beast-insights-backend/
-  app.js                              (existing - no changes)
-  package.json                        (modify - no new deps for Phase 1 backend)
+beastinsights-backend/
+  app.js                              (NEW - Express app setup)
+  package.json                        (NEW)
 
   db/
-    config.js                         (existing - Prisma client)
+    config.js                         (NEW - Prisma client)
     queryPool.js                      (NEW - pg connection pool for query engine)
     templateMethods.js                (NEW - CRUD for report_templates via Prisma)
     filterOptionMethods.js            (NEW - distinct dimension values)
@@ -906,27 +903,29 @@ beast-insights-backend/
     templateService.js                (NEW - template business logic)
     filterOptionService.js            (NEW - filter option business logic)
     middlewares/
-      auth.js                         (existing - JWT verification, NO CHANGES)
-      apiAuth.js                      (existing - NO CHANGES)
-      apiRateLimit.js                 (existing - NO CHANGES)
-      respond.js                      (existing - NO CHANGES)
+      auth.js                         (brought over from beast-insights-backend)
+      apiAuth.js                      (brought over from beast-insights-backend)
+      apiRateLimit.js                 (brought over from beast-insights-backend)
+      respond.js                      (brought over from beast-insights-backend)
 
   controller/
     queryController.js                (NEW - handles query/batch requests)
     templateController.js             (NEW - handles template CRUD)
     filterOptionController.js         (NEW - handles filter option requests)
+    authController.js                 (brought over - login/register/password)
+    userController.js                 (brought over - user CRUD)
 
   routes/
-    handleRequests.js                 (existing - ADD new route registrations)
     queryRoutes.js                    (NEW - POST /api/v1/query, /api/v1/query/batch)
     templateRoutes.js                 (NEW - GET /api/v1/reports/templates)
     filterOptionRoutes.js             (NEW - GET /api/v1/filters/options/:key)
+    authRoutes.js                     (brought over - login/register/password)
+    userRoutes.js                     (brought over - user CRUD)
 
   prisma/
-    schema.prisma                     (existing - ADD report_builder models)
-    migrations/
-      YYYYMMDD_report_builder/
-        migration.sql                 (NEW - the full schema from Section 4)
+    schema.prisma                     (generated via prisma db pull)
+    sql/
+      create_report_builder_schema.sql  (NEW - the full schema from Section 4)
     seed-report-builder.js            (NEW - seeds data sources, metrics, dims, toggles)
     seed-templates.js                 (NEW - seeds all 11 report templates)
 ```
@@ -995,11 +994,11 @@ Request Flow:
     |-- For each query in parallel (Promise.all):
     |     queryEngine.execute(query)
     |
-    |-- Results keyed by widgetId:
+    |-- Results keyed by visualId:
     |     { "summary_cards": { rows, totals }, "trend_chart": { rows }, ... }
     |
     v
-  Return { results: { [widgetId]: { data, metadata } }, totalTimeMs }
+  Return { results: { [visualId]: { data, metadata } }, totalTimeMs }
 ```
 
 ### 5.4 Catalog Cache
@@ -1039,51 +1038,54 @@ class CatalogCache {
 | Tenant Isolation | `clientId` from JWT token (never from request body). Every query includes `WHERE client_id = $N`. |
 | Column Whitelisting | Only columns in `report_builder.metrics` and `report_builder.dimensions` can be queried. |
 | Query Timeout | 30 second max execution time per query. |
-| Auth | Reuse existing `auth.js` middleware. All new routes protected. |
-| Rate Limiting | Reuse existing `apiRateLimit.js` if needed. |
+| Auth | Reuse auth middleware brought over from `beast-insights-backend`. All routes protected. |
+| Rate Limiting | Reuse rate limiting middleware brought over from `beast-insights-backend`. |
 
-### 5.6 handleRequests.js Changes
+### 5.6 Route Registration
 
 ```javascript
-// ADD these lines to routes/handleRequests.js
-const { queryRoutes } = require("./queryRoutes");
-const { templateRoutes } = require("./templateRoutes");
-const { filterOptionRoutes } = require("./filterOptionRoutes");
+// Routes are registered in the Express app setup
+const { queryRoutes } = require("./routes/queryRoutes");
+const { templateRoutes } = require("./routes/templateRoutes");
+const { filterOptionRoutes } = require("./routes/filterOptionRoutes");
+const { authRoutes } = require("./routes/authRoutes");
+const { userRoutes } = require("./routes/userRoutes");
 
-function handleRequests(app) {
-  // ... existing routes ...
+// Report Builder API
+app.use("/api/v1/query", queryRoutes);
+app.use("/api/v1/reports", templateRoutes);
+app.use("/api/v1/filters", filterOptionRoutes);
 
-  // NEW: Report Builder API
-  app.use("/api/v1/query", queryRoutes);
-  app.use("/api/v1/reports", templateRoutes);
-  app.use("/api/v1/filters", filterOptionRoutes);
-}
+// Auth & User management (brought over)
+app.use("/api/user", authRoutes);
+app.use("/api/user", userRoutes);
 ```
 
 ---
 
 ## 6. Frontend Architecture
 
-### 6.1 New Folder Structure
+### 6.1 New Repo Structure
+
+The `beastinsights` repo is built from scratch. Reference `beastinsights-old` for UI design patterns, colors, and layout inspiration.
 
 ```
 beastinsights/
   app/
-    providers.jsx                     (modify - add QueryClientProvider)
+    providers.jsx                     (QueryClientProvider + Zustand)
     (user-type)/
       (user)/
         reports/
-          native/
-            [reportSlug]/
-              page.js                 (NEW - dynamic native report page)
-              loading.js              (NEW - skeleton loader)
+          [reportSlug]/
+            page.js                   (NEW - dynamic report page)
+            loading.js                (NEW - skeleton loader)
 
   lib/
     queryClient.js                    (NEW - TanStack Query client config)
     reportApi.js                      (NEW - API functions for reports)
 
   stores/
-    reportFilterStore.js              (NEW - Zustand: date range, filters, toggles)
+    reportFilterStore.js              (NEW - Zustand: date range, filters, slicers)
     reportUIStore.js                  (NEW - Zustand: active tab, collapsed sections)
 
   hooks/
@@ -1094,37 +1096,36 @@ beastinsights/
     useServerPagination.js            (NEW - for Transaction Explorer)
 
   components/
-    native-reports/
-      ReportPage.jsx                  (NEW - wrapper: FilterBar + ReportRenderer)
-      ReportRenderer.jsx              (NEW - reads JSON, renders sections)
-      FilterBar.jsx                   (NEW - date range, filters, toggles)
-      ToggleControl.jsx               (NEW - pill/dropdown toggle UI)
-      DimensionFilter.jsx             (NEW - multiselect dimension filter)
-      GroupBySelector.jsx             (NEW - dimension group-by dropdown)
-      CompareToggle.jsx               (NEW - compare to previous period)
-      MonthSelector.jsx               (NEW - for MID Performance)
+    ReportRenderer.jsx                (NEW - reads JSON, renders sections)
+    ReportPage.jsx                    (NEW - wrapper: SlicerPanel + ReportRenderer)
+    SlicerPanel.jsx                   (NEW - date range, filters, slicers)
+    SlicerControl.jsx                 (NEW - pill/dropdown slicer UI)
+    DimensionFilter.jsx               (NEW - multiselect dimension filter)
+    GroupBySelector.jsx               (NEW - dimension group-by dropdown)
+    CompareToggle.jsx                 (NEW - compare to previous period)
+    MonthSelector.jsx                 (NEW - for MID Performance)
 
-      layouts/
-        Section.jsx                   (NEW - section wrapper)
-        CardRow.jsx                   (NEW - horizontal card layout)
-        Grid.jsx                      (NEW - CSS grid layout)
-        FullWidth.jsx                 (NEW - single column)
-        TabsSection.jsx               (NEW - tabbed sections)
+    layouts/
+      Section.jsx                     (NEW - section wrapper)
+      CardRow.jsx                     (NEW - horizontal card layout)
+      Grid.jsx                        (NEW - CSS grid layout)
+      FullWidth.jsx                   (NEW - single column)
+      TabsSection.jsx                 (NEW - tabbed sections)
 
-      widgets/
-        MetricCard.jsx                (NEW - summary card with trend)
-        Chart.jsx                     (NEW - Recharts wrapper)
-        DataTable.jsx                 (NEW - TanStack Table wrapper)
-        PivotTable.jsx                (NEW - cohort/retention matrix)
-        SummaryTable.jsx              (NEW - multi-row summary)
-        WaterfallChart.jsx            (NEW - custom waterfall)
-        ParameterInput.jsx            (NEW - $/% input for profitability)
-        HealthIndicator.jsx           (NEW - status badge widget)
-        WidgetSkeleton.jsx            (NEW - loading skeleton per widget type)
-        WidgetError.jsx               (NEW - error state with retry)
+    visuals/
+      CardVisual.jsx                  (NEW - Tremor Card with trend)
+      ChartVisual.jsx                 (NEW - Tremor chart wrapper)
+      TableVisual.jsx                 (NEW - Tremor Table / TanStack Table wrapper)
+      MatrixVisual.jsx                (NEW - cohort/retention matrix)
+      SummaryTable.jsx                (NEW - multi-row summary)
+      WaterfallVisual.jsx             (NEW - custom waterfall)
+      ParameterInput.jsx              (NEW - $/% input for profitability)
+      HealthIndicator.jsx             (NEW - status badge visual)
+      VisualSkeleton.jsx              (NEW - loading skeleton per visual type)
+      VisualError.jsx                 (NEW - error state with retry)
 ```
 
-### 6.2 providers.jsx Changes
+### 6.2 providers.jsx
 
 ```jsx
 'use client';
@@ -1132,9 +1133,6 @@ beastinsights/
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { persistor, store } from '@/store/store';
-import { Provider as ReduxProvider } from 'react-redux';
-import { PersistGate } from 'redux-persist/integration/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 
@@ -1144,11 +1142,7 @@ function Provider({ children }) {
       <TooltipProvider delayDuration={0}>
         <Sonner richColors />
         <QueryClientProvider client={queryClient}>
-          <ReduxProvider store={store}>
-            <PersistGate loading={null} persistor={persistor}>
-              {children}
-            </PersistGate>
-          </ReduxProvider>
+          {children}
         </QueryClientProvider>
       </TooltipProvider>
     </ThemeProvider>
@@ -1223,36 +1217,36 @@ export const createReportFilterStore = (templateKey) =>
 ### 6.4 Component Hierarchy
 
 ```
-<NativeReportPage reportSlug="revenue-analytics">
+<ReportPage reportSlug="revenue-analytics">
   |
-  |-- useReportTemplate(reportSlug)     → fetches template JSON from API
-  |-- createReportFilterStore()          → creates Zustand store for this report
-  |-- useReportData(template, filters)   → builds batch query, fetches via TanStack Query
+  |-- useReportTemplate(reportSlug)     -> fetches template JSON from API
+  |-- createReportFilterStore()          -> creates Zustand store for this report
+  |-- useReportData(template, filters)   -> builds batch query, fetches via TanStack Query
   |
-  ├── <FilterBar template={template.filterBar}>
-  │   ├── <DateRangePicker />            (reuses existing custom-date-range-picker.tsx)
-  │   ├── <ToggleControl />              (pills for approval_mode, dropdown for date_basis)
-  │   ├── <DimensionFilter />            (multiselect dropdowns)
-  │   ├── <GroupBySelector />            (dimension dropdown)
-  │   ├── <ParameterInput />             ($/% inputs for profitability)
-  │   └── <CompareToggle />              (vs previous period)
-  │
-  └── <ReportRenderer template={template} data={data}>
-      ├── <Section type="card_row">
-      │   ├── <MetricCard />             → formatted value + trend arrow + comparison %
-      │   ├── <MetricCard />
-      │   └── <MetricCard />
-      ├── <Section type="full_width">
-      │   └── <Chart chartType="line" /> → Recharts line/bar/area/pie/stacked
-      ├── <Section type="tabs">
-      │   ├── Tab: "By Product"
-      │   │   └── <DataTable />          → TanStack Table, sortable, paginated
-      │   ├── Tab: "By Campaign"
-      │   │   └── <DataTable />
-      │   └── Tab: "By Gateway"
-      │       └── <DataTable />
-      └── <Section type="full_width">
-          └── <PivotTable />             → cohort matrix with heatmap
+  +-- <SlicerPanel template={template.filterBar}>
+  |   +-- <DateRangePicker />            (reuses existing custom-date-range-picker.tsx)
+  |   +-- <SlicerControl />              (pills for approval_mode, dropdown for date_basis)
+  |   +-- <DimensionFilter />            (multiselect dropdowns)
+  |   +-- <GroupBySelector />            (dimension dropdown)
+  |   +-- <ParameterInput />             ($/% inputs for profitability)
+  |   +-- <CompareToggle />              (vs previous period)
+  |
+  +-- <ReportRenderer template={template} data={data}>
+      +-- <Section type="card_row">
+      |   +-- <CardVisual />             -> formatted value + trend arrow + comparison %
+      |   +-- <CardVisual />
+      |   +-- <CardVisual />
+      +-- <Section type="full_width">
+      |   +-- <ChartVisual chartType="line" /> -> Tremor line/bar/area/pie/stacked
+      +-- <Section type="tabs">
+      |   +-- Tab: "By Product"
+      |   |   +-- <TableVisual />          -> TanStack Table, sortable, paginated
+      |   +-- Tab: "By Campaign"
+      |   |   +-- <TableVisual />
+      |   +-- Tab: "By Gateway"
+      |       +-- <TableVisual />
+      +-- <Section type="full_width">
+          +-- <MatrixVisual />             -> cohort matrix with heatmap
 ```
 
 ---
@@ -1307,34 +1301,34 @@ Every template follows this structure:
     {
       "id": "summary_cards",
       "type": "card_row",
-      "widgets": [
+      "visuals": [
         {
-          "id": "revenue_card",
-          "type": "metric_card",
+          "visualId": "revenue_card",
+          "type": "Card",
           "title": "Revenue",
           "metrics": [{ "metricKey": "revenue", "label": "Total" }],
           "showTrend": true,
           "trendComparison": "previous_period"
         },
         {
-          "id": "new_customers_card",
-          "type": "metric_card",
+          "visualId": "new_customers_card",
+          "type": "Card",
           "title": "New Customers",
           "metrics": [{ "metricKey": "initials", "label": "Count" }],
           "showTrend": true,
           "trendComparison": "previous_period"
         },
         {
-          "id": "active_subs_card",
-          "type": "metric_card",
+          "visualId": "active_subs_card",
+          "type": "Card",
           "title": "Active Subscribers",
           "metrics": [{ "metricKey": "approvals", "label": "Count" }],
           "showTrend": true,
           "trendComparison": "previous_period"
         },
         {
-          "id": "churn_card",
-          "type": "metric_card",
+          "visualId": "churn_card",
+          "type": "Card",
           "title": "Cancel Rate",
           "metrics": [{ "metricKey": "cancel_rate", "label": "Rate" }],
           "showTrend": true,
@@ -1346,10 +1340,10 @@ Every template follows this structure:
     {
       "id": "hourly_chart",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "hourly_revenue",
-          "type": "chart",
+          "visualId": "hourly_revenue",
+          "type": "Chart",
           "source": "hourly_revenue",
           "chartType": "area",
           "title": "Revenue Today vs 7-Day Avg",
@@ -1365,10 +1359,10 @@ Every template follows this structure:
     {
       "id": "daily_table",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "daily_summary",
-          "type": "data_table",
+          "visualId": "daily_summary",
+          "type": "Table",
           "title": "Daily Summary",
           "dimension": "date_day",
           "metrics": [
@@ -1412,34 +1406,34 @@ Every template follows this structure:
     {
       "id": "running_totals",
       "type": "card_row",
-      "widgets": [
+      "visuals": [
         {
-          "id": "today_revenue",
-          "type": "metric_card",
+          "visualId": "today_revenue",
+          "type": "Card",
           "title": "Revenue (Running)",
           "source": "hourly_revenue",
           "metrics": [{ "metricKey": "today_revenue_total", "label": "Today" }],
           "showTrend": false
         },
         {
-          "id": "today_orders",
-          "type": "metric_card",
+          "visualId": "today_orders",
+          "type": "Card",
           "title": "Orders (Running)",
           "source": "hourly_revenue",
           "metrics": [{ "metricKey": "today_orders_total", "label": "Today" }],
           "showTrend": false
         },
         {
-          "id": "today_new",
-          "type": "metric_card",
+          "visualId": "today_new",
+          "type": "Card",
           "title": "New Customers",
           "source": "hourly_revenue",
           "metrics": [{ "metricKey": "today_initials_total", "label": "Today" }],
           "showTrend": false
         },
         {
-          "id": "today_failures",
-          "type": "metric_card",
+          "visualId": "today_failures",
+          "type": "Card",
           "title": "Payment Failures",
           "source": "hourly_revenue",
           "metrics": [{ "metricKey": "today_failures_total", "label": "Today" }],
@@ -1451,10 +1445,10 @@ Every template follows this structure:
       "id": "hourly_charts",
       "type": "grid",
       "columns": 2,
-      "widgets": [
+      "visuals": [
         {
-          "id": "revenue_hourly",
-          "type": "chart",
+          "visualId": "revenue_hourly",
+          "type": "Chart",
           "chartType": "area",
           "title": "Revenue by Hour",
           "xAxis": { "dimensionKey": "date_hour" },
@@ -1464,8 +1458,8 @@ Every template follows this structure:
           ]
         },
         {
-          "id": "success_hourly",
-          "type": "chart",
+          "visualId": "success_hourly",
+          "type": "Chart",
           "chartType": "line",
           "title": "Payment Success Rate by Hour",
           "xAxis": { "dimensionKey": "date_hour" },
@@ -1478,10 +1472,10 @@ Every template follows this structure:
     {
       "id": "hourly_table",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "hourly_breakdown",
-          "type": "data_table",
+          "visualId": "hourly_breakdown",
+          "type": "Table",
           "title": "Hour by Hour",
           "dimension": "date_hour",
           "metrics": [
@@ -1530,10 +1524,10 @@ Every template follows this structure:
     {
       "id": "summary",
       "type": "card_row",
-      "widgets": [
+      "visuals": [
         {
-          "id": "initials_card",
-          "type": "metric_card",
+          "visualId": "initials_card",
+          "type": "Card",
           "title": "Initials",
           "metrics": [
             { "metricKey": "initials", "label": "Count" },
@@ -1542,8 +1536,8 @@ Every template follows this structure:
           "showTrend": true
         },
         {
-          "id": "rebills_card",
-          "type": "metric_card",
+          "visualId": "rebills_card",
+          "type": "Card",
           "title": "Rebills",
           "metrics": [
             { "metricKey": "rebills", "label": "Count" },
@@ -1552,8 +1546,8 @@ Every template follows this structure:
           "showTrend": true
         },
         {
-          "id": "total_card",
-          "type": "metric_card",
+          "visualId": "total_card",
+          "type": "Card",
           "title": "Total",
           "metrics": [
             { "metricKey": "approvals", "label": "Count" },
@@ -1562,8 +1556,8 @@ Every template follows this structure:
           "showTrend": true
         },
         {
-          "id": "rates_card",
-          "type": "metric_card",
+          "visualId": "rates_card",
+          "type": "Card",
           "title": "Rates",
           "metrics": [
             { "metricKey": "approval_rate", "label": "Approval %" },
@@ -1576,10 +1570,10 @@ Every template follows this structure:
     {
       "id": "trend",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "revenue_trend",
-          "type": "chart",
+          "visualId": "revenue_trend",
+          "type": "Chart",
           "chartType": "area",
           "title": "Revenue Trend",
           "xAxis": { "dimensionKey": "{time_granularity}" },
@@ -1595,10 +1589,10 @@ Every template follows this structure:
     {
       "id": "breakdown",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "revenue_table",
-          "type": "data_table",
+          "visualId": "revenue_table",
+          "type": "Table",
           "title": "Revenue by {groupBy}",
           "dimension": "{groupBy}",
           "metrics": [
@@ -1650,20 +1644,20 @@ Every template follows this structure:
     {
       "id": "mrr_cards",
       "type": "card_row",
-      "widgets": [
-        { "id": "mrr_card", "type": "metric_card", "title": "MRR", "metrics": [{ "metricKey": "revenue_rebills", "label": "Monthly" }], "showTrend": true },
-        { "id": "active_card", "type": "metric_card", "title": "Active Subscribers", "metrics": [{ "metricKey": "rebills", "label": "Count" }], "showTrend": true },
-        { "id": "net_growth_card", "type": "metric_card", "title": "Net Growth", "metrics": [{ "metricKey": "approvals", "label": "New" }, { "metricKey": "cancels", "label": "Cancelled" }], "showTrend": true },
-        { "id": "cancel_rate_card", "type": "metric_card", "title": "Cancel Rate", "metrics": [{ "metricKey": "cancel_rate", "label": "Rate" }], "showTrend": true, "invertTrend": true }
+      "visuals": [
+        { "visualId": "mrr_card", "type": "Card", "title": "MRR", "metrics": [{ "metricKey": "revenue_rebills", "label": "Monthly" }], "showTrend": true },
+        { "visualId": "active_card", "type": "Card", "title": "Active Subscribers", "metrics": [{ "metricKey": "rebills", "label": "Count" }], "showTrend": true },
+        { "visualId": "net_growth_card", "type": "Card", "title": "Net Growth", "metrics": [{ "metricKey": "approvals", "label": "New" }, { "metricKey": "cancels", "label": "Cancelled" }], "showTrend": true },
+        { "visualId": "cancel_rate_card", "type": "Card", "title": "Cancel Rate", "metrics": [{ "metricKey": "cancel_rate", "label": "Rate" }], "showTrend": true, "invertTrend": true }
       ]
     },
     {
       "id": "mrr_trend",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "mrr_chart",
-          "type": "chart",
+          "visualId": "mrr_chart",
+          "type": "Chart",
           "chartType": "area",
           "title": "Revenue Trend",
           "xAxis": { "dimensionKey": "{time_granularity}" },
@@ -1679,10 +1673,10 @@ Every template follows this structure:
     {
       "id": "subscriber_table",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "monthly_flow",
-          "type": "data_table",
+          "visualId": "monthly_flow",
+          "type": "Table",
           "title": "Monthly Subscriber Flow",
           "dimension": "date_month",
           "metrics": [
@@ -1725,20 +1719,20 @@ Every template follows this structure:
     {
       "id": "ltv_cards",
       "type": "card_row",
-      "widgets": [
-        { "id": "ltv_30", "type": "metric_card", "title": "30-Day LTV", "metrics": [{ "metricKey": "ltv_30d" }], "showTrend": true },
-        { "id": "ltv_90", "type": "metric_card", "title": "90-Day LTV", "metrics": [{ "metricKey": "ltv_90d" }], "showTrend": true },
-        { "id": "ltv_180", "type": "metric_card", "title": "180-Day LTV", "metrics": [{ "metricKey": "ltv_180d" }], "showTrend": true },
-        { "id": "retention_m1", "type": "metric_card", "title": "M1 Retention", "metrics": [{ "metricKey": "retention_cycle_1" }], "showTrend": true }
+      "visuals": [
+        { "visualId": "ltv_30", "type": "Card", "title": "30-Day LTV", "metrics": [{ "metricKey": "ltv_30d" }], "showTrend": true },
+        { "visualId": "ltv_90", "type": "Card", "title": "90-Day LTV", "metrics": [{ "metricKey": "ltv_90d" }], "showTrend": true },
+        { "visualId": "ltv_180", "type": "Card", "title": "180-Day LTV", "metrics": [{ "metricKey": "ltv_180d" }], "showTrend": true },
+        { "visualId": "retention_m1", "type": "Card", "title": "M1 Retention", "metrics": [{ "metricKey": "retention_cycle_1" }], "showTrend": true }
       ]
     },
     {
       "id": "retention_matrix",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "cohort_heatmap",
-          "type": "pivot_table",
+          "visualId": "cohort_heatmap",
+          "type": "Matrix",
           "title": "Retention Cohort Heatmap",
           "source": "cohort_summary",
           "rowDimension": "date_month",
@@ -1754,10 +1748,10 @@ Every template follows this structure:
     {
       "id": "ltv_table",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "ltv_by_source",
-          "type": "data_table",
+          "visualId": "ltv_by_source",
+          "type": "Table",
           "source": "order_summary",
           "title": "LTV by Acquisition Channel",
           "dimension": "campaign_name",
@@ -1803,20 +1797,20 @@ Every template follows this structure:
     {
       "id": "churn_cards",
       "type": "card_row",
-      "widgets": [
-        { "id": "total_churn", "type": "metric_card", "title": "Total Cancel Rate", "metrics": [{ "metricKey": "cancel_rate" }], "showTrend": true, "invertTrend": true },
-        { "id": "cancels", "type": "metric_card", "title": "Cancels", "metrics": [{ "metricKey": "cancels" }], "showTrend": true, "invertTrend": true },
-        { "id": "cb_rate", "type": "metric_card", "title": "CB Rate", "metrics": [{ "metricKey": "cb_rate" }], "showTrend": true, "invertTrend": true },
-        { "id": "refund_rate", "type": "metric_card", "title": "Refund Rate", "metrics": [{ "metricKey": "refund_rate" }], "showTrend": true, "invertTrend": true }
+      "visuals": [
+        { "visualId": "total_churn", "type": "Card", "title": "Total Cancel Rate", "metrics": [{ "metricKey": "cancel_rate" }], "showTrend": true, "invertTrend": true },
+        { "visualId": "cancels", "type": "Card", "title": "Cancels", "metrics": [{ "metricKey": "cancels" }], "showTrend": true, "invertTrend": true },
+        { "visualId": "cb_rate", "type": "Card", "title": "CB Rate", "metrics": [{ "metricKey": "cb_rate" }], "showTrend": true, "invertTrend": true },
+        { "visualId": "refund_rate", "type": "Card", "title": "Refund Rate", "metrics": [{ "metricKey": "refund_rate" }], "showTrend": true, "invertTrend": true }
       ]
     },
     {
       "id": "churn_trend",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "churn_chart",
-          "type": "chart",
+          "visualId": "churn_chart",
+          "type": "Chart",
           "chartType": "line",
           "title": "Churn Trend",
           "xAxis": { "dimensionKey": "{time_granularity}" },
@@ -1832,10 +1826,10 @@ Every template follows this structure:
     {
       "id": "churn_table",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "churn_by_dimension",
-          "type": "data_table",
+          "visualId": "churn_by_dimension",
+          "type": "Table",
           "title": "Churn by {groupBy}",
           "dimension": "{groupBy}",
           "metrics": [
@@ -1885,20 +1879,20 @@ Every template follows this structure:
     {
       "id": "health_cards",
       "type": "card_row",
-      "widgets": [
-        { "id": "approval_card", "type": "metric_card", "title": "Approval Rate", "metrics": [{ "metricKey": "approval_rate" }], "showTrend": true },
-        { "id": "attempts_card", "type": "metric_card", "title": "Attempts", "metrics": [{ "metricKey": "attempts" }, { "metricKey": "approvals" }], "showTrend": true },
-        { "id": "decline_card", "type": "metric_card", "title": "Declines", "metrics": [{ "metricKey": "declines" }], "showTrend": true, "invertTrend": true },
-        { "id": "recovery_card", "type": "metric_card", "title": "Recovery Rate", "source": "decline_recovery", "metrics": [{ "metricKey": "recovery_rate" }], "showTrend": true }
+      "visuals": [
+        { "visualId": "approval_card", "type": "Card", "title": "Approval Rate", "metrics": [{ "metricKey": "approval_rate" }], "showTrend": true },
+        { "visualId": "attempts_card", "type": "Card", "title": "Attempts", "metrics": [{ "metricKey": "attempts" }, { "metricKey": "approvals" }], "showTrend": true },
+        { "visualId": "decline_card", "type": "Card", "title": "Declines", "metrics": [{ "metricKey": "declines" }], "showTrend": true, "invertTrend": true },
+        { "visualId": "recovery_card", "type": "Card", "title": "Recovery Rate", "source": "decline_recovery", "metrics": [{ "metricKey": "recovery_rate" }], "showTrend": true }
       ]
     },
     {
       "id": "approval_trend",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "approval_chart",
-          "type": "chart",
+          "visualId": "approval_chart",
+          "type": "Chart",
           "chartType": "line",
           "title": "Approval Rate Trend",
           "xAxis": { "dimensionKey": "{time_granularity}" },
@@ -1911,10 +1905,10 @@ Every template follows this structure:
     {
       "id": "recovery_section",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "recovery_table",
-          "type": "data_table",
+          "visualId": "recovery_table",
+          "type": "Table",
           "source": "decline_recovery",
           "title": "Recovery by Decline Group",
           "dimension": "decline_group",
@@ -1934,10 +1928,10 @@ Every template follows this structure:
     {
       "id": "breakdown",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "approval_table",
-          "type": "data_table",
+          "visualId": "approval_table",
+          "type": "Table",
           "title": "Approval Rate by {groupBy}",
           "dimension": "{groupBy}",
           "metrics": [
@@ -1977,19 +1971,19 @@ Every template follows this structure:
     {
       "id": "channel_cards",
       "type": "card_row",
-      "widgets": [
-        { "id": "total_new", "type": "metric_card", "title": "New Customers", "metrics": [{ "metricKey": "initials" }], "showTrend": true },
-        { "id": "avg_cpa", "type": "metric_card", "title": "Avg CPA", "metrics": [{ "metricKey": "cpa_cost" }], "showTrend": true, "invertTrend": true },
-        { "id": "best_channel", "type": "metric_card", "title": "Revenue (Initials)", "metrics": [{ "metricKey": "revenue_initials" }], "showTrend": true }
+      "visuals": [
+        { "visualId": "total_new", "type": "Card", "title": "New Customers", "metrics": [{ "metricKey": "initials" }], "showTrend": true },
+        { "visualId": "avg_cpa", "type": "Card", "title": "Avg CPA", "metrics": [{ "metricKey": "cpa_cost" }], "showTrend": true, "invertTrend": true },
+        { "visualId": "best_channel", "type": "Card", "title": "Revenue (Initials)", "metrics": [{ "metricKey": "revenue_initials" }], "showTrend": true }
       ]
     },
     {
       "id": "channel_table",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "channel_scorecard",
-          "type": "data_table",
+          "visualId": "channel_scorecard",
+          "type": "Table",
           "title": "Channel Scorecard",
           "dimension": "campaign_name",
           "metrics": [
@@ -2043,10 +2037,10 @@ Every template follows this structure:
       "id": "waterfall",
       "type": "full_width",
       "conditionalVisibility": { "toggleKey": "profitability_view", "showWhen": "cashflow" },
-      "widgets": [
+      "visuals": [
         {
-          "id": "cashflow_waterfall",
-          "type": "waterfall_chart",
+          "visualId": "cashflow_waterfall",
+          "type": "Waterfall",
           "title": "P&L Waterfall",
           "steps": [
             { "metricKey": "revenue", "label": "Gross Revenue", "type": "start" },
@@ -2064,20 +2058,20 @@ Every template follows this structure:
     {
       "id": "profit_cards",
       "type": "card_row",
-      "widgets": [
-        { "id": "revenue_card", "type": "metric_card", "title": "Gross Revenue", "metrics": [{ "metricKey": "revenue" }], "showTrend": true },
-        { "id": "net_revenue_card", "type": "metric_card", "title": "Net Revenue", "metrics": [{ "metricKey": "net_revenue" }], "showTrend": true },
-        { "id": "profit_card", "type": "metric_card", "title": "Gross Profit", "metrics": [{ "metricKey": "gross_profit" }], "showTrend": true },
-        { "id": "margin_card", "type": "metric_card", "title": "Gross Margin", "metrics": [{ "metricKey": "gross_margin" }], "showTrend": true }
+      "visuals": [
+        { "visualId": "revenue_card", "type": "Card", "title": "Gross Revenue", "metrics": [{ "metricKey": "revenue" }], "showTrend": true },
+        { "visualId": "net_revenue_card", "type": "Card", "title": "Net Revenue", "metrics": [{ "metricKey": "net_revenue" }], "showTrend": true },
+        { "visualId": "profit_card", "type": "Card", "title": "Gross Profit", "metrics": [{ "metricKey": "gross_profit" }], "showTrend": true },
+        { "visualId": "margin_card", "type": "Card", "title": "Gross Margin", "metrics": [{ "metricKey": "gross_margin" }], "showTrend": true }
       ]
     },
     {
       "id": "profit_table",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "profit_by_product",
-          "type": "data_table",
+          "visualId": "profit_by_product",
+          "type": "Table",
           "title": "Profitability by {groupBy}",
           "dimension": "{groupBy}",
           "metrics": [
@@ -2118,10 +2112,10 @@ Every template follows this structure:
     {
       "id": "product_table",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "product_scorecard",
-          "type": "data_table",
+          "visualId": "product_scorecard",
+          "type": "Table",
           "title": "Product Performance",
           "dimension": "product_name",
           "metrics": [
@@ -2143,10 +2137,10 @@ Every template follows this structure:
     {
       "id": "product_trend",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "product_chart",
-          "type": "chart",
+          "visualId": "product_chart",
+          "type": "Chart",
           "chartType": "stacked_bar",
           "title": "Revenue by Product (Weekly)",
           "xAxis": { "dimensionKey": "date_week" },
@@ -2198,10 +2192,10 @@ Every template follows this structure:
     {
       "id": "transactions",
       "type": "full_width",
-      "widgets": [
+      "visuals": [
         {
-          "id": "transaction_table",
-          "type": "data_table",
+          "visualId": "transaction_table",
+          "type": "Table",
           "title": "Transactions",
           "isDetailTable": true,
           "columns": [
@@ -2238,8 +2232,8 @@ Every template follows this structure:
 
 ```
 QUERY (protected by auth middleware)
-  POST   /api/v1/query              Single widget query
-  POST   /api/v1/query/batch        Multiple widget queries in parallel
+  POST   /api/v1/query              Single visual query
+  POST   /api/v1/query/batch        Multiple visual queries in parallel
 
 TEMPLATES (protected by auth middleware)
   GET    /api/v1/reports/templates              List available templates for user
@@ -2257,11 +2251,11 @@ TEMPLATES
   PUT    /api/v1/reports/templates/:id           Update template
   DELETE /api/v1/reports/templates/:id           Delete (user-created only)
 
-SAVED VIEWS
-  GET    /api/v1/views                          List user's saved views
-  POST   /api/v1/views                          Create saved view
-  PUT    /api/v1/views/:id                      Update saved view
-  DELETE /api/v1/views/:id                      Delete saved view
+BOOKMARKS
+  GET    /api/v1/bookmarks                      List user's bookmarks
+  POST   /api/v1/bookmarks                      Create bookmark
+  PUT    /api/v1/bookmarks/:id                  Update bookmark
+  DELETE /api/v1/bookmarks/:id                  Delete bookmark
 
 FILTER PRESETS
   GET    /api/v1/filters/presets                List presets
@@ -2273,9 +2267,9 @@ DASHBOARDS
   GET    /api/v1/dashboards/:id                 Get dashboard
   POST   /api/v1/dashboards                     Create dashboard
   PUT    /api/v1/dashboards/:id                 Update dashboard
-  POST   /api/v1/dashboards/:id/widgets         Add widget
-  PUT    /api/v1/dashboards/:id/widgets/:wid    Update widget
-  DELETE /api/v1/dashboards/:id/widgets/:wid    Remove widget
+  POST   /api/v1/dashboards/:id/tiles           Add tile
+  PUT    /api/v1/dashboards/:id/tiles/:tid      Update tile
+  DELETE /api/v1/dashboards/:id/tiles/:tid      Remove tile
 
 SCHEDULES
   GET    /api/v1/schedules                      List schedules
@@ -2345,18 +2339,18 @@ POST /api/v1/query/batch
   },
   "queries": [
     {
-      "widgetId": "summary_cards",
+      "visualId": "summary_cards",
       "source": "order_summary",
       "metrics": ["initials", "rebills", "revenue"]
     },
     {
-      "widgetId": "trend_chart",
+      "visualId": "trend_chart",
       "source": "order_summary",
       "metrics": ["approvals"],
       "dimensions": ["date_day"]
     },
     {
-      "widgetId": "breakdown_table",
+      "visualId": "breakdown_table",
       "source": "order_summary",
       "metrics": ["approvals", "revenue", "approval_rate"],
       "dimensions": ["campaign_name"],
@@ -2400,7 +2394,7 @@ Layer 2: PostgreSQL Materialized Views
   - Existing ETL handles refresh schedule
 ```
 
-### Why This Is Fast Enough Without Redis
+### Why This Is Fast Enough
 
 | Component | Latency |
 |-----------|---------|
@@ -2447,109 +2441,31 @@ const queryPool = new Pool({
 
 ---
 
-## 10. Integration with Existing System
-
-### What Does NOT Change
-
-| Component | Path | Status |
-|-----------|------|--------|
-| Login routes | `/api/user/*` | Unchanged |
-| Auth middleware | `services/middlewares/auth.js` | Reused as-is |
-| JWT token structure | `{ email, id }` | Unchanged |
-| User roles | superadmin, consultant, admin, user | Unchanged |
-| Client management | `/api/client/*` | Unchanged |
-| Raw data routes | `/api/data/*` | Unchanged |
-| BIN routing | `/api/bin-routing/*` | Unchanged |
-| Prisma schema | `prisma/schema.prisma` | Extended (not modified) |
-| Power BI reports | `components/reports/Reports.jsx` | Runs in parallel |
-| Redux store | `store/store.js` | Unchanged |
-| Sidebar | `components/sidebar/AppSidebar.jsx` | Modified to support dual routing |
-
-### Feature Flag: Report Mode
-
-Add `report_mode` column to `beast_insights_v2.clients`:
-
-```sql
-ALTER TABLE beast_insights_v2.clients
-ADD COLUMN report_mode VARCHAR(20) DEFAULT 'powerbi';
--- Values: 'powerbi' | 'native' | 'both'
-```
-
-**Behavior:**
-- `powerbi` - existing behavior, no changes
-- `native` - sidebar routes to `/reports/native/{slug}` instead of Power BI
-- `both` - sidebar shows both options, toggle button in toolbar
-
-### Sidebar Integration
-
-The existing `AppSidebar.jsx` reads navigation items from `beast_insights_v2.navigation_items`. For native mode:
-
-1. Add a `native_template_key` column to `navigation_items` or maintain a mapping table
-2. When `report_mode != 'powerbi'`, sidebar links route to `/reports/native/{template_key}` instead of `/reports/{power_bi_page_route}`
-3. When `report_mode == 'both'`, show an icon toggle per report to switch between views
-
-### Client ID Flow
-
-```
-Existing Redux clientSlice
-  -> stores selectedClientId
-  -> used by all existing features
-
-New reports:
-  -> Custom hook reads clientId from Redux
-  -> Passes to TanStack Query as query key
-  -> Sent to backend in API requests
-  -> Backend extracts from JWT (never trusts frontend clientId)
-```
-
-```javascript
-// hooks/useClientId.js
-import { useSelector } from 'react-redux';
-
-export function useClientId() {
-  return useSelector((state) => state.client.selectedClientId);
-}
-```
-
-### Existing Components Reused
-
-| Component | Path | Used For |
-|-----------|------|----------|
-| `custom-date-range-picker.tsx` | `components/ui/` | Date range picker in FilterBar |
-| `tabs.tsx` | `components/ui/` | Tabbed sections in reports |
-| `select.tsx` | `components/ui/` | Dropdown filters and selectors |
-| `button.tsx` | `components/ui/` | All buttons |
-| `card.tsx` | `components/ui/` | MetricCard wrapper |
-| `badge.tsx` | `components/ui/` | Status badges |
-| `skeleton.tsx` | `components/ui/` | Loading states |
-| `tooltip.tsx` | `components/ui/` | Metric explanations |
-| `popover.tsx` | `components/ui/` | Filter dropdowns |
-| `table.tsx` | `components/ui/` | Base table styling |
-| Theme system | `components/theme-provider.jsx` | Dark/light mode support |
-
----
-
 ## Summary
 
 ```
 WHAT WE'RE BUILDING:
+
+New Repos:
+  - beastinsights (frontend) — Next.js 16 + React 19 + Tremor + Zustand
+  - beastinsights-backend (backend) — Express.js + Prisma + pg query engine
 
 Phase 1: The Engine
   - 14 new backend files (query engine, routes, controllers)
   - 20+ new frontend files (components, stores, hooks)
   - 11 report JSON templates
   - 1 new database schema with 15 tables
-  - 0 changes to existing auth, login, or Power BI code
+  - Auth/login/user routes brought over from beast-insights-backend
 
 Phase 2: Customization (after Phase 1)
 Phase 3: Access Control (after Phase 2)
 Phase 4: Industry Modules (after Phase 3)
 
 KEY PRINCIPLES:
-  - No Redis in Phase 1 (materialized views + TanStack Query are sufficient)
-  - No changes to login routes
-  - Power BI runs in parallel until native is validated
-  - Feature-flagged per client
+  - Separate subdomain deployment — standalone new app
+  - No Prisma migration — raw SQL, then prisma db pull
+  - Tremor for analytics visuals, shadcn for navigation/inputs
+  - Zustand for all client state, TanStack Query for server state
   - One generic endpoint, one generic renderer
   - JSON controls everything — no code deploys for new reports/metrics
 ```

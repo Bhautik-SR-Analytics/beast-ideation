@@ -2,6 +2,8 @@
 
 > Complete schema design for the `report_builder` PostgreSQL schema — tables, columns, relationships, indexes, and ER diagrams.
 
+> **Terminology:** This document uses Power BI terminology — visuals (not widgets), slicers (not toggles/filters), matrix (not pivot table), bookmarks (not saved views), tiles (not dashboard widgets), reports (not report templates).
+
 ---
 
 ## Table of Contents
@@ -54,11 +56,11 @@ New schema name: **`report_builder`**
 
 | # | Table | Purpose | Approx Rows |
 |---|-------|---------|-------------|
-| 1 | `data_sources` | Materialized view registry | ~10 |
+| 1 | `data_sources` | Materialized view registry (dataset catalog) | ~10 |
 | 2 | `metrics` | Metric catalog (SQL expressions, formats, types) | ~100 |
 | 3 | `dimensions` | Dimension catalog (columns, joins) | ~30 |
-| 4 | `data_source_metrics` | Junction: which metrics work with which sources | ~500 |
-| 5 | `data_source_dimensions` | Junction: which dimensions work with which sources | ~200 |
+| 4 | `data_source_metrics` | Junction: which metrics work with which datasets | ~500 |
+| 5 | `data_source_dimensions` | Junction: which dimensions work with which datasets | ~200 |
 | 6 | `metric_toggles` | Toggle definitions (approval_mode, date_basis, etc.) | ~6 |
 | 7 | `metric_toggle_options` | Options per toggle (standard, organic, net, etc.) | ~20 |
 | 8 | `metric_variants` | SQL overrides per metric/toggle/option combination | ~50 |
@@ -68,10 +70,10 @@ New schema name: **`report_builder`**
 
 | # | Table | Purpose |
 |---|-------|---------|
-| 10 | `saved_views` | Per-user report customizations |
+| 10 | `bookmarks` | Per-user report customizations |
 | 11 | `filter_presets` | Named, shareable filter sets |
 | 12 | `dashboards` | Personal dashboard layouts |
-| 13 | `dashboard_widgets` | Pinned widgets on dashboards |
+| 13 | `dashboard_tiles` | Pinned visuals on dashboards |
 | 14 | `scheduled_reports` | Scheduled email/Telegram delivery |
 | 15 | `export_jobs` | CSV/Excel/PDF export tracking |
 
@@ -88,14 +90,7 @@ New schema name: **`report_builder`**
 |---|-------|---------|
 | 18 | `client_modules` | Per-client industry module enablement |
 
-### Existing Table Modification
-
-| Table | Change |
-|-------|--------|
-| `beast_insights_v2.clients` | Add `report_mode VARCHAR DEFAULT 'powerbi'` |
-| `beast_insights_v2.client_features` | Add `is_native_reports_enabled BOOLEAN DEFAULT false` |
-
-**Total: 18 new tables + 2 column additions to existing tables**
+**Total: 18 new tables in the `report_builder` schema (no existing tables are modified)**
 
 ---
 
@@ -105,7 +100,7 @@ New schema name: **`report_builder`**
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                           REPORT TEMPLATE LAYER                                  │
+│                              REPORT LAYER                                        │
 │                                                                                  │
 │  ┌─────────────────────┐                                                         │
 │  │  report_templates    │                                                         │
@@ -176,7 +171,7 @@ New schema name: **`report_builder`**
 ┌──────────────────────────────────────────────────────────────────────────────────┐
 │                                                                                  │
 │  ┌──────────────────┐     ┌──────────────────────┐                               │
-│  │  saved_views      │     │  filter_presets       │                              │
+│  │  bookmarks        │     │  filter_presets       │                              │
 │  ├──────────────────┤     ├──────────────────────┤                               │
 │  │ id (PK)          │     │ id (PK)              │                               │
 │  │ user_id (FK)─────┼─┐   │ user_id (FK)─────────┼─┐                            │
@@ -187,11 +182,11 @@ New schema name: **`report_builder`**
 │  └──────────────────┘ │   └──────────────────────┘ │                              │
 │                        │                             │   ┌──────────────┐         │
 │  ┌──────────────────┐ │   ┌──────────────────────┐  │   │ users        │         │
-│  │  dashboards       │ │   │  dashboard_widgets   │  │   │ (existing)   │         │
+│  │  dashboards       │ │   │  dashboard_tiles     │  │   │ (existing)   │         │
 │  ├──────────────────┤ │   ├──────────────────────┤  │   │ beast_       │         │
 │  │ id (PK)          │ │   │ id (PK)              │  └──►│ insights_v2  │         │
 │  │ user_id (FK)─────┼─┤   │ dashboard_id (FK)    │      └──────────────┘         │
-│  │ client_id (FK)   │ │   │ widget_config (JSONB)│                                │
+│  │ client_id (FK)   │ │   │ visual_config (JSONB)│                                │
 │  │ name             │ │   │ position (JSONB)     │                                │
 │  │ layout (JSONB)   │ │   └──────────────────────┘                                │
 │  └──────────────────┘ │                                                           │
@@ -257,7 +252,7 @@ New schema name: **`report_builder`**
 
 ### 4.1 `data_sources`
 
-Maps logical data source names to their physical materialized view patterns in the `reporting` schema.
+Maps logical dataset names to their physical materialized view patterns in the `reporting` schema.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -268,7 +263,7 @@ Maps logical data source names to their physical materialized view patterns in t
 | `date_column` | `VARCHAR(100)` | YES | `'date'` | Name of the date column used for date range filters |
 | `client_id_column` | `VARCHAR(100)` | NO | `'client_id'` | Name of the client_id column |
 | `refresh_frequency_minutes` | `INTEGER` | YES | `60` | How often the materialized view refreshes |
-| `description` | `TEXT` | YES | — | What this data source contains |
+| `description` | `TEXT` | YES | — | What this dataset contains |
 | `is_active` | `BOOLEAN` | NO | `true` | Soft-active flag |
 | `created_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | Record creation time |
 | `updated_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | Record update time |
@@ -277,7 +272,7 @@ Maps logical data source names to their physical materialized view patterns in t
 - `PK`: `data_sources_pk` on `id`
 - `UNIQUE`: `data_sources_source_key_uq` on `source_key`
 
-**Existing materialized views this maps to (10 sources):**
+**Existing materialized views this maps to (10 datasets):**
 
 | `source_key` | `view_pattern` | `date_column` | Columns |
 |--------------|----------------|---------------|---------|
@@ -341,10 +336,10 @@ Every dimension users can group by or filter on.
 | `join_table` | `VARCHAR(200)` | YES | — | Table to JOIN for display name lookup (e.g., `public.campaigns`) |
 | `join_condition` | `TEXT` | YES | — | JOIN ON clause (e.g., `{source}.campaign_id = campaigns.campaign_id AND campaigns.client_id = {client_id}`) |
 | `data_type` | `VARCHAR(50)` | NO | `'text'` | `text`, `integer`, `date`, `boolean` |
-| `filter_type` | `VARCHAR(50)` | NO | `'multi_select'` | How this appears in the filter bar: `multi_select`, `single_select`, `date_range`, `search` |
+| `filter_type` | `VARCHAR(50)` | NO | `'multi_select'` | How this appears in the slicer panel: `multi_select`, `single_select`, `date_range`, `search` |
 | `is_groupable` | `BOOLEAN` | NO | `true` | Can this be used in GROUP BY |
 | `is_filterable` | `BOOLEAN` | NO | `true` | Can this be used as a WHERE filter |
-| `category` | `VARCHAR(100)` | YES | — | Grouping for filter bar UI (e.g., `transaction`, `marketing`, `payment`, `time`) |
+| `category` | `VARCHAR(100)` | YES | — | Grouping for slicer panel UI (e.g., `transaction`, `marketing`, `payment`, `time`) |
 | `sort_order` | `INTEGER` | YES | `0` | Display ordering |
 | `is_active` | `BOOLEAN` | NO | `true` | Soft-active flag |
 | `created_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | Record creation time |
@@ -359,7 +354,7 @@ Every dimension users can group by or filter on.
 
 ### 4.4 `data_source_metrics`
 
-Junction table: which metrics are valid for which data sources.
+Junction table: which metrics are valid for which datasets.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -379,7 +374,7 @@ Junction table: which metrics are valid for which data sources.
 
 ### 4.5 `data_source_dimensions`
 
-Junction table: which dimensions can be used with which data sources.
+Junction table: which dimensions can be used with which datasets.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -408,8 +403,8 @@ Toggle definitions — context switches that change how metrics are calculated.
 | `display_name` | `VARCHAR(200)` | NO | — | UI label (e.g., `Approval Mode`, `Date Basis`) |
 | `description` | `TEXT` | YES | — | What this toggle controls |
 | `toggle_type` | `VARCHAR(50)` | NO | `'metric_variant'` | `metric_variant` (changes SQL expression) or `dimension_switch` (changes GROUP BY dimension) |
-| `ui_component` | `VARCHAR(50)` | NO | `'pill_group'` | How rendered in FilterBar: `pill_group`, `dropdown`, `toggle_switch` |
-| `sort_order` | `INTEGER` | YES | `0` | Display order in filter bar |
+| `ui_component` | `VARCHAR(50)` | NO | `'pill_group'` | How rendered in Slicer Panel: `pill_group`, `dropdown`, `toggle_switch` |
+| `sort_order` | `INTEGER` | YES | `0` | Display order in slicer panel |
 | `is_active` | `BOOLEAN` | NO | `true` | Soft-active flag |
 | `created_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | Record creation time |
 | `updated_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | Record update time |
@@ -506,8 +501,8 @@ JSON report layout definitions. Each report is stored as a single JSONB blob.
 | `name` | `VARCHAR(200)` | NO | — | Display name (e.g., `Revenue Analytics`, `Command Center`) |
 | `description` | `TEXT` | YES | — | Report description |
 | `category` | `VARCHAR(100)` | NO | — | Report grouping: `operations`, `analytics`, `financial`, `lifecycle`, `risk` |
-| `layout` | `JSONB` | NO | — | Full report layout JSON (sections, widgets, configs) |
-| `default_filters` | `JSONB` | YES | `'{}'` | Default filter values (e.g., `{"dateRange": "last_30_days"}`) |
+| `layout` | `JSONB` | NO | — | Full report layout JSON (sections, visuals, configs) |
+| `default_filters` | `JSONB` | YES | `'{}'` | Default slicer values (e.g., `{"dateRange": "last_30_days"}`) |
 | `default_date_range` | `VARCHAR(50)` | YES | `'last_30_days'` | Default date range preset |
 | `required_data_sources` | `VARCHAR[]` | NO | — | Array of `source_key` values this report needs |
 | `required_toggles` | `VARCHAR[]` | YES | — | Array of `toggle_key` values used in this report |
@@ -526,7 +521,7 @@ JSON report layout definitions. Each report is stored as a single JSONB blob.
 - `INDEX`: `report_templates_category_idx` on `category`
 - `INDEX`: `report_templates_nav_section_idx` on `nav_section`
 
-**11 stock templates to seed:**
+**11 stock reports to seed:**
 
 | `template_key` | `name` | `category` | `nav_section` | Data Sources |
 |----------------|--------|------------|---------------|--------------|
@@ -548,9 +543,9 @@ JSON report layout definitions. Each report is stored as a single JSONB blob.
 
 > All Phase 2 tables are created empty during Milestone 1. No data, no APIs — just the schema.
 
-### 5.1 `saved_views`
+### 5.1 `bookmarks`
 
-Per-user saved customizations of a stock report.
+Per-user saved customizations of a stock report (saved report state).
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -559,21 +554,21 @@ Per-user saved customizations of a stock report.
 | `template_id` | `BIGINT` | NO | — | FK → `report_templates.id` |
 | `client_id` | `BIGINT` | NO | — | FK → `beast_insights_v2.clients.id` |
 | `name` | `VARCHAR(200)` | NO | — | User-given name (e.g., `My Q4 View`) |
-| `filters` | `JSONB` | YES | `'{}'` | Saved filter state |
-| `layout_overrides` | `JSONB` | YES | `'{}'` | Widget visibility/order overrides |
+| `filters` | `JSONB` | YES | `'{}'` | Saved slicer state |
+| `layout_overrides` | `JSONB` | YES | `'{}'` | Visual visibility/order overrides |
 | `toggles` | `JSONB` | YES | `'{}'` | Saved toggle state |
-| `is_default` | `BOOLEAN` | NO | `false` | Auto-load this view when opening the report |
+| `is_default` | `BOOLEAN` | NO | `false` | Auto-load this bookmark when opening the report |
 | `is_active` | `BOOLEAN` | NO | `true` | Soft-active flag |
 | `is_deleted` | `BOOLEAN` | NO | `false` | Soft-delete flag |
 | `created_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | |
 | `updated_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | |
 
 **Constraints:**
-- `PK`: `saved_views_pk` on `id`
-- `FK`: `saved_views_users_id_fk` → `beast_insights_v2.users.id` ON DELETE CASCADE
-- `FK`: `saved_views_report_templates_id_fk` → `report_templates.id` ON DELETE CASCADE
-- `FK`: `saved_views_clients_id_fk` → `beast_insights_v2.clients.id` ON DELETE CASCADE
-- `INDEX`: `saved_views_user_id_template_id_idx` on `(user_id, template_id)`
+- `PK`: `bookmarks_pk` on `id`
+- `FK`: `bookmarks_users_id_fk` → `beast_insights_v2.users.id` ON DELETE CASCADE
+- `FK`: `bookmarks_report_templates_id_fk` → `report_templates.id` ON DELETE CASCADE
+- `FK`: `bookmarks_clients_id_fk` → `beast_insights_v2.clients.id` ON DELETE CASCADE
+- `INDEX`: `bookmarks_user_id_template_id_idx` on `(user_id, template_id)`
 
 ---
 
@@ -627,17 +622,17 @@ Personal dashboard layouts.
 
 ---
 
-### 5.4 `dashboard_widgets`
+### 5.4 `dashboard_tiles`
 
-Pinned widgets on a personal dashboard.
+Pinned visuals on a personal dashboard.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | `BIGINT` | NO | `autoincrement` | Primary key |
 | `dashboard_id` | `BIGINT` | NO | — | FK → `dashboards.id` |
-| `source_template_id` | `BIGINT` | YES | — | FK → `report_templates.id` (which report this widget came from) |
-| `widget_type` | `VARCHAR(50)` | NO | — | `metric_card`, `chart`, `data_table`, etc. |
-| `widget_config` | `JSONB` | NO | — | Complete widget configuration (metrics, dimensions, filters, chart type) |
+| `source_template_id` | `BIGINT` | YES | — | FK → `report_templates.id` (which report this visual came from) |
+| `visual_type` | `VARCHAR(50)` | NO | — | `card`, `chart`, `table`, etc. |
+| `visual_config` | `JSONB` | NO | — | Complete visual configuration (metrics, dimensions, slicers, chart type) |
 | `position` | `JSONB` | NO | — | `{ x, y, w, h }` for react-grid-layout |
 | `title` | `VARCHAR(200)` | YES | — | Custom title override |
 | `sort_order` | `INTEGER` | YES | `0` | |
@@ -645,9 +640,9 @@ Pinned widgets on a personal dashboard.
 | `created_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | |
 
 **Constraints:**
-- `PK`: `dashboard_widgets_pk` on `id`
-- `FK`: `dashboard_widgets_dashboards_id_fk` → `dashboards.id` ON DELETE CASCADE
-- `FK`: `dashboard_widgets_report_templates_id_fk` → `report_templates.id` ON DELETE SET NULL
+- `PK`: `dashboard_tiles_pk` on `id`
+- `FK`: `dashboard_tiles_dashboards_id_fk` → `dashboards.id` ON DELETE CASCADE
+- `FK`: `dashboard_tiles_report_templates_id_fk` → `report_templates.id` ON DELETE SET NULL
 
 ---
 
@@ -669,7 +664,7 @@ Scheduled email/Telegram report delivery.
 | `timezone` | `VARCHAR(100)` | NO | `'America/New_York'` | User's timezone |
 | `delivery_channel` | `VARCHAR(50)` | NO | `'email'` | `email`, `telegram`, `slack` |
 | `delivery_target` | `VARCHAR(500)` | YES | — | Email address or chat ID |
-| `filters` | `JSONB` | YES | `'{}'` | Locked filter state for this schedule |
+| `filters` | `JSONB` | YES | `'{}'` | Locked slicer state for this schedule |
 | `export_format` | `VARCHAR(50)` | NO | `'pdf'` | `pdf`, `csv`, `excel` |
 | `last_sent_at` | `TIMESTAMP(6)` | YES | — | Last successful delivery |
 | `next_send_at` | `TIMESTAMP(6)` | YES | — | Pre-computed next send time |
@@ -699,7 +694,7 @@ Tracks export requests (CSV, Excel, PDF).
 | `template_id` | `BIGINT` | YES | — | FK → `report_templates.id` |
 | `format` | `VARCHAR(50)` | NO | — | `csv`, `excel`, `pdf` |
 | `status` | `VARCHAR(50)` | NO | `'pending'` | `pending`, `processing`, `completed`, `failed` |
-| `filters` | `JSONB` | YES | — | Filter state at time of export |
+| `filters` | `JSONB` | YES | — | Slicer state at time of export |
 | `file_url` | `TEXT` | YES | — | S3/storage URL once generated |
 | `file_size_bytes` | `BIGINT` | YES | — | |
 | `error_message` | `TEXT` | YES | — | Error detail if failed |
@@ -803,35 +798,7 @@ Per-client industry module enablement.
 
 ## 8. Existing Table Modifications
 
-### 8.1 `beast_insights_v2.clients` — Add `report_mode`
-
-```sql
-ALTER TABLE beast_insights_v2.clients
-ADD COLUMN report_mode VARCHAR(20) NOT NULL DEFAULT 'powerbi';
-```
-
-| Column | Type | Default | Allowed Values |
-|--------|------|---------|---------------|
-| `report_mode` | `VARCHAR(20)` | `'powerbi'` | `powerbi`, `native`, `both` |
-
-**Purpose:** Controls which reporting system each client uses.
-- `powerbi` — existing Power BI embedded reports (current default)
-- `native` — new native report renderer only
-- `both` — shows a toggle switch in the UI to flip between them
-
-### 8.2 `beast_insights_v2.client_features` — Add `is_native_reports_enabled`
-
-```sql
-ALTER TABLE beast_insights_v2.client_features
-ADD COLUMN is_native_reports_enabled BOOLEAN NOT NULL DEFAULT false;
-```
-
-**Purpose:** Feature flag at the client level. Works alongside `report_mode` — allows gradual rollout per-client.
-
-Current `client_features` columns:
-- `id`, `client_id`, `is_bin_routing_enabled`, `created_at`, `updated_at`, `is_dashboard_enabled`, `is_mid_enabled`, `is_router_enabled`, `is_order_details_enabled`
-
-Adding `is_native_reports_enabled` follows the exact same boolean flag pattern.
+No existing tables in `beast_insights_v2` are modified. The `report_builder` schema is entirely self-contained — it references existing tables via foreign keys but does not add columns or alter any existing table structure.
 
 ---
 
@@ -845,17 +812,17 @@ Adding `is_native_reports_enabled` follows the exact same boolean flag pattern.
 | `metrics` | `metrics_metric_key_uq` | `metric_key` UNIQUE | Lookup by key (query engine) |
 | `dimensions` | `dimensions_category_idx` | `category` | Filter dimensions by category |
 | `dimensions` | `dimensions_dimension_key_uq` | `dimension_key` UNIQUE | Lookup by key (query engine) |
-| `data_sources` | `data_sources_source_key_uq` | `source_key` UNIQUE | Resolve source by key |
-| `data_source_metrics` | `data_source_metrics_uq` | `(data_source_id, metric_id)` UNIQUE | Validate metric-source pair |
-| `data_source_metrics` | `data_source_metrics_data_source_id_idx` | `data_source_id` | List metrics for a source |
-| `data_source_dimensions` | `data_source_dimensions_uq` | `(data_source_id, dimension_id)` UNIQUE | Validate dimension-source pair |
-| `data_source_dimensions` | `data_source_dimensions_data_source_id_idx` | `data_source_id` | List dimensions for a source |
+| `data_sources` | `data_sources_source_key_uq` | `source_key` UNIQUE | Resolve dataset by key |
+| `data_source_metrics` | `data_source_metrics_uq` | `(data_source_id, metric_id)` UNIQUE | Validate metric-dataset pair |
+| `data_source_metrics` | `data_source_metrics_data_source_id_idx` | `data_source_id` | List metrics for a dataset |
+| `data_source_dimensions` | `data_source_dimensions_uq` | `(data_source_id, dimension_id)` UNIQUE | Validate dimension-dataset pair |
+| `data_source_dimensions` | `data_source_dimensions_data_source_id_idx` | `data_source_id` | List dimensions for a dataset |
 | `metric_variants` | `metric_variants_uq` | `(metric_id, toggle_option_id)` UNIQUE | Fast variant lookup |
 | `metric_variants` | `metric_variants_metric_id_idx` | `metric_id` | All variants for a metric |
 | `metric_toggle_options` | `metric_toggle_options_uq` | `(toggle_id, option_key)` UNIQUE | Resolve option within toggle |
 | `report_templates` | `report_templates_template_key_uq` | `template_key` UNIQUE | URL slug lookup |
 | `report_templates` | `report_templates_category_idx` | `category` | List reports by category |
-| `saved_views` | `saved_views_user_id_template_id_idx` | `(user_id, template_id)` | List user's views for a report |
+| `bookmarks` | `bookmarks_user_id_template_id_idx` | `(user_id, template_id)` | List user's bookmarks for a report |
 | `user_dimension_access` | `user_dimension_access_user_client_idx` | `(user_id, client_id)` | Fetch user's access rules |
 | `scheduled_reports` | `scheduled_reports_next_send_at_idx` | `next_send_at` | Cron job pickup |
 | `export_jobs` | `export_jobs_user_id_status_idx` | `(user_id, status)` | User's export history |
@@ -871,8 +838,8 @@ The `report_builder` schema references the existing `beast_insights_v2` schema i
 | report_builder Table | Column | References |
 |---------------------|--------|------------|
 | `report_templates` | `created_by` | `beast_insights_v2.users.id` |
-| `saved_views` | `user_id` | `beast_insights_v2.users.id` |
-| `saved_views` | `client_id` | `beast_insights_v2.clients.id` |
+| `bookmarks` | `user_id` | `beast_insights_v2.users.id` |
+| `bookmarks` | `client_id` | `beast_insights_v2.clients.id` |
 | `filter_presets` | `user_id` | `beast_insights_v2.users.id` |
 | `filter_presets` | `client_id` | `beast_insights_v2.clients.id` |
 | `dashboards` | `user_id` | `beast_insights_v2.users.id` |
@@ -896,12 +863,12 @@ data_sources ──┐
 
 metric_toggles ── metric_toggle_options ── metric_variants ── metrics
 
-report_templates ◄── saved_views
+report_templates ◄── bookmarks
 report_templates ◄── scheduled_reports
-report_templates ◄── dashboard_widgets
+report_templates ◄── dashboard_tiles
 report_templates ◄── export_jobs
 
-dashboards ◄── dashboard_widgets
+dashboards ◄── dashboard_tiles
 
 dimensions ◄── user_dimension_access
 user_dimension_access ◄── dimension_access_audit
@@ -930,12 +897,12 @@ All existing `beast_insights_v2` relationships remain exactly as they are:
 
 ## 11. Seed Data Summary
 
-Seeding happens during **Milestone 5** (Data Library from Power BI), but this is what the seed script will populate:
+Seeding happens during **Milestone 5** (Data Library), but this is what the seed script will populate:
 
 | Table | Rows | Source |
 |-------|------|--------|
 | `data_sources` | 10 | Manual mapping of existing `reporting.*` materialized views |
-| `metrics` | ~100 | Translated from Power BI DAX measures |
+| `metrics` | ~100 | Translated from existing DAX measures |
 | `dimensions` | ~30 | Extracted from materialized view columns + lookup tables |
 | `data_source_metrics` | ~500 | Which metrics work with which materialized views |
 | `data_source_dimensions` | ~200 | Which dimensions are available per materialized view |
@@ -943,12 +910,6 @@ Seeding happens during **Milestone 5** (Data Library from Power BI), but this is
 | `metric_toggle_options` | ~20 | Options per toggle |
 | `metric_variants` | ~50 | SQL overrides per metric/toggle/option |
 | `report_templates` | 11 | The 11 stock report JSON layouts |
-
-Existing `beast_insights_v2` tables seeded:
-| Table | Change |
-|-------|--------|
-| `clients.report_mode` | Set to `'powerbi'` for all existing clients (no visible change) |
-| `client_features.is_native_reports_enabled` | Set to `false` for all existing clients (no visible change) |
 
 ---
 
@@ -1183,11 +1144,11 @@ CREATE INDEX report_templates_category_idx ON report_builder.report_templates (c
 CREATE INDEX report_templates_nav_section_idx ON report_builder.report_templates (nav_section);
 
 -- ============================================================
--- 10. saved_views (Phase 2 — created empty)
+-- 10. bookmarks (Phase 2 — created empty)
 -- ============================================================
-CREATE TABLE report_builder.saved_views (
+CREATE TABLE report_builder.bookmarks (
     id                  BIGSERIAL PRIMARY KEY
-                        CONSTRAINT saved_views_pk,
+                        CONSTRAINT bookmarks_pk,
     user_id             VARCHAR NOT NULL,
     template_id         BIGINT NOT NULL,
     client_id           BIGINT NOT NULL,
@@ -1201,19 +1162,19 @@ CREATE TABLE report_builder.saved_views (
     created_at          TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT saved_views_users_id_fk
+    CONSTRAINT bookmarks_users_id_fk
         FOREIGN KEY (user_id) REFERENCES beast_insights_v2.users(id)
         ON DELETE CASCADE,
-    CONSTRAINT saved_views_report_templates_id_fk
+    CONSTRAINT bookmarks_report_templates_id_fk
         FOREIGN KEY (template_id) REFERENCES report_builder.report_templates(id)
         ON DELETE CASCADE,
-    CONSTRAINT saved_views_clients_id_fk
+    CONSTRAINT bookmarks_clients_id_fk
         FOREIGN KEY (client_id) REFERENCES beast_insights_v2.clients(id)
         ON DELETE CASCADE
 );
 
-CREATE INDEX saved_views_user_id_template_id_idx
-    ON report_builder.saved_views (user_id, template_id);
+CREATE INDEX bookmarks_user_id_template_id_idx
+    ON report_builder.bookmarks (user_id, template_id);
 
 -- ============================================================
 -- 11. filter_presets (Phase 2 — created empty)
@@ -1268,25 +1229,25 @@ CREATE TABLE report_builder.dashboards (
 );
 
 -- ============================================================
--- 13. dashboard_widgets (Phase 2 — created empty)
+-- 13. dashboard_tiles (Phase 2 — created empty)
 -- ============================================================
-CREATE TABLE report_builder.dashboard_widgets (
+CREATE TABLE report_builder.dashboard_tiles (
     id                  BIGSERIAL PRIMARY KEY
-                        CONSTRAINT dashboard_widgets_pk,
+                        CONSTRAINT dashboard_tiles_pk,
     dashboard_id        BIGINT NOT NULL,
     source_template_id  BIGINT,
-    widget_type         VARCHAR(50) NOT NULL,
-    widget_config       JSONB NOT NULL,
+    visual_type         VARCHAR(50) NOT NULL,
+    visual_config       JSONB NOT NULL,
     position            JSONB NOT NULL,
     title               VARCHAR(200),
     sort_order          INTEGER DEFAULT 0,
     is_active           BOOLEAN NOT NULL DEFAULT true,
     created_at          TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT dashboard_widgets_dashboards_id_fk
+    CONSTRAINT dashboard_tiles_dashboards_id_fk
         FOREIGN KEY (dashboard_id) REFERENCES report_builder.dashboards(id)
         ON DELETE CASCADE,
-    CONSTRAINT dashboard_widgets_report_templates_id_fk
+    CONSTRAINT dashboard_tiles_report_templates_id_fk
         FOREIGN KEY (source_template_id) REFERENCES report_builder.report_templates(id)
         ON DELETE SET NULL
 );
@@ -1437,13 +1398,4 @@ CREATE TABLE report_builder.client_modules (
         FOREIGN KEY (client_id) REFERENCES beast_insights_v2.clients(id)
         ON DELETE CASCADE
 );
-
--- ============================================================
--- Existing table modifications
--- ============================================================
-ALTER TABLE beast_insights_v2.clients
-    ADD COLUMN IF NOT EXISTS report_mode VARCHAR(20) NOT NULL DEFAULT 'powerbi';
-
-ALTER TABLE beast_insights_v2.client_features
-    ADD COLUMN IF NOT EXISTS is_native_reports_enabled BOOLEAN NOT NULL DEFAULT false;
 ```
