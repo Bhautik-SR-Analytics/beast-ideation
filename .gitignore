@@ -1,2 +1,6 @@
+beastinsights/
+beastinsights-old/
+beastinsights-backend/
+beast-insights-backend/
 PBI-beastinsights-prod/
 .env
