@@ -69,36 +69,41 @@ M3, M4, M5 can run in parallel — backend builds query engine, frontend builds 
 
 We create ALL tables upfront — even those used in later phases — because altering schema mid-flight is disruptive. Tables for Phase 2+ simply remain empty until needed.
 
-**Phase 1 tables (populated):**
+**Phase 1 tables (9 tables, populated via seed):**
 
 | Table | Purpose | Rows |
 |-------|---------|------|
 | `data_sources` | Maps logical names to materialized view patterns | ~10 |
-| `metrics` | Full metric catalog with SQL expressions | ~100 |
-| `dimensions` | Dimension catalog with columns and JOINs | ~30 |
-| `data_source_metrics` | Which metrics work with which datasets | ~500 |
+| `metrics` | Metric catalog with SQL expressions, comparison/trend flags, decimal places | ~100 |
+| `dimensions` | Dimension catalog with columns, JOINs, and separate `filter_column` for WHERE clauses | ~30 |
+| `data_source_metrics` | Which metrics work with which datasets (with optional `sql_expression_override` per source) | ~500 |
 | `data_source_dimensions` | Which dimensions work with which datasets | ~200 |
 | `metric_toggles` | Toggle definitions (approval_mode, date_basis, etc.) | 6 |
 | `metric_toggle_options` | Options per toggle (standard, organic, net) | ~20 |
 | `metric_variants` | SQL overrides per metric/toggle/option | ~50 |
-| `report_templates` | JSON report layout definitions | 11 |
+| `report_templates` | JSON report layouts (with `client_id` for custom, `module_key` for Phase 4) | 11 |
 
-**Future phase tables (created empty):**
+**Future phase tables (15 tables, created empty):**
 
 | Table | Phase | Purpose |
 |-------|-------|---------|
-| `bookmarks` | 2 | Per-user saved report state |
-| `filter_presets` | 2 | Named, shareable filter sets |
+| `bookmarks` | 2 | Per-user saved report state (filters, toggles, layout) |
+| `filter_presets` | 2 | Named filter combinations |
 | `dashboards` | 2 | Personal dashboard layouts |
 | `dashboard_tiles` | 2 | Pinned visuals on dashboards |
-| `scheduled_reports` | 2 | Scheduled delivery configs |
-| `export_jobs` | 2 | Export tracking |
-| `user_report_access` | 2 | Which reports each user/role can access |
-| `notification_rules` | 2 | Threshold-based alert rules |
-| `notification_log` | 2 | Notification delivery history |
+| `scheduled_reports` | 2 | Automated delivery configs (with `bookmark_id` and `toggles`) |
+| `export_jobs` | 2 | Export tracking with filter + toggle state |
+| `user_report_access` | 2 | Report visibility per user/role (partial unique indexes) |
+| `notification_rules` | 2 | Threshold alerts (multi-channel via `delivery_channels` array) |
+| `notification_log` | 2 | Notification delivery history (with `is_read` for in-app) |
+| `report_template_shares` | 2 | Share custom reports with specific users (view/edit/duplicate) |
+| `bookmark_shares` | 2 | Share bookmarks with specific users |
+| `filter_preset_shares` | 2 | Share filter presets with specific users |
 | `user_dimension_access` | 3 | Row-level dimension permissions |
 | `dimension_access_audit` | 3 | Audit log for access changes |
 | `client_modules` | 4 | Per-client industry module enablement |
+
+**Total: 24 tables** (9 Phase 1 + 12 Phase 2 + 2 Phase 3 + 1 Phase 4)
 
 **Tasks:**
 1. Write raw SQL file for entire `report_builder` schema (all tables)
@@ -416,7 +421,7 @@ Validated against Power BI
 - Picks dataset, slicers, default filters
 - Saves as a custom report template (`report_templates` table with `template_type = 'custom'`)
 - Custom reports appear in the sidebar under "My Reports"
-- Optional: share with other users in the same client
+- Share with specific users via `report_template_shares` (permission: view, edit, or duplicate)
 
 **Builder UI features:**
 - Metric catalog browser (searchable, grouped by category)
@@ -445,7 +450,7 @@ Validated against Power BI
 - Names the preset (e.g., "Q4 Top Campaigns")
 - Preset appears in a dropdown on the slicer panel
 - Selecting a preset applies all saved filter values at once
-- Optional: mark as shared → visible to all users in the same client
+- Optional: share with specific users via `filter_preset_shares`
 - Works across reports (preset stores filter values, not report-specific config)
 
 **API endpoints:**
@@ -552,13 +557,15 @@ Validated against Power BI
 | Feature | Tables Used |
 |---------|------------|
 | Report access management | `user_report_access` |
-| Custom report creation | `report_templates` (template_type = 'custom') |
-| Filter presets | `filter_presets` |
-| Bookmarks (save views) | `bookmarks` |
+| Custom report creation | `report_templates` (client_id set), `report_template_shares` |
+| Filter presets | `filter_presets`, `filter_preset_shares` |
+| Bookmarks (save views) | `bookmarks`, `bookmark_shares` |
 | Notifications | `notification_rules`, `notification_log` |
 | Export | `export_jobs` |
 | Scheduled delivery | `scheduled_reports` |
 | Personal dashboards | `dashboards`, `dashboard_tiles` |
+
+**Sharing model:** Custom reports, bookmarks, and filter presets support per-user sharing via junction tables. Each sharing table has `shared_with_user_id`, `shared_by_user_id`, `client_id`. Custom reports support permission levels: `view`, `edit`, `duplicate`. Bookmarks and filter presets are share-to-view only.
 
 ---
 
@@ -653,7 +660,7 @@ Dimension-level access control. An admin assigns a user to specific dimension va
 ## Appendix: Phase Summary
 
 ### Phase 1 — Core Reporting Engine
-- `report_builder` schema (all tables)
+- `report_builder` schema (24 tables — all phases created upfront)
 - Query engine (single + batch API)
 - Frontend renderer (7 visual types + layouts)
 - Data library extracted from PBI
@@ -662,12 +669,12 @@ Dimension-level access control. An admin assigns a user to specific dimension va
 
 ### Phase 2 — User Customization & Self-Service
 - User-based report access management
-- Custom report builder
-- Filter presets (save & share)
-- Bookmarks (save views per report)
-- Notifications (threshold alerts)
-- Export (CSV, Excel, PDF)
-- Scheduled delivery (email, Telegram)
+- Custom report builder (share with specific users: view/edit/duplicate)
+- Filter presets (save & share with specific users)
+- Bookmarks (save views per report, share with specific users)
+- Notifications (threshold alerts, multi-channel: email/in-app/Telegram)
+- Export (CSV, Excel, PDF with filter + toggle state)
+- Scheduled delivery (email, Telegram, can schedule a bookmark)
 - Personal dashboards (pin tiles)
 
 ### Phase 3 — Row-Level Security

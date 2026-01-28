@@ -83,24 +83,28 @@ New schema name: **`report_builder`**
 | 20 | `report_template_shares` | Share custom reports with specific users |
 | 21 | `bookmark_shares` | Share bookmarks with specific users |
 | 22 | `filter_preset_shares` | Share filter presets with specific users |
-| 23 | `client_template_filter_overrides` | Client-level filter cascade overrides |
-| 24 | `user_template_filter_overrides` | User-level filter cascade overrides |
+| 23 | `dashboard_shares` | Share dashboards with specific users |
+| 24 | `client_template_filter_overrides` | Client-level filter cascade overrides |
+| 25 | `user_template_filter_overrides` | User-level filter cascade overrides |
+| 26 | `client_report_access` | Client-level report visibility (equivalent of `client_features`) |
+| 27 | `user_preferences` | Per-user platform settings (JSONB) |
+| 28 | `client_toggle_overrides` | Per-client toggle option visibility |
 
 ### Phase 3 Tables (created empty, populated in Phase 3)
 
 | # | Table | Purpose |
 |---|-------|---------|
-| 25 | `user_dimension_access` | User-level dimension value restrictions |
-| 26 | `client_dimension_access` | Client-level dimension value restrictions |
-| 27 | `dimension_access_audit` | Audit log for access changes |
+| 29 | `user_dimension_access` | User-level dimension value restrictions |
+| 30 | `client_dimension_access` | Client-level dimension value restrictions |
+| 31 | `dimension_access_audit` | Audit log for access changes |
 
 ### Phase 4 Tables (created empty, populated in Phase 4)
 
 | # | Table | Purpose |
 |---|-------|---------|
-| 28 | `client_modules` | Per-client industry module enablement |
+| 32 | `client_modules` | Per-client industry module enablement |
 
-**Total: 28 new tables in the `report_builder` schema (no existing tables are modified)**
+**Total: 32 new tables in the `report_builder` schema (no existing tables are modified)**
 
 ---
 
@@ -219,19 +223,28 @@ New schema name: **`report_builder`**
 │  │ client_id (FK)   │ │   │ visual_config (JSONB)│                                │
 │  │ name             │ │   │ position (JSONB)     │                                │
 │  │ layout (JSONB)   │ │   └──────────────────────┘                                │
-│  └──────────────────┘ │                                                           │
-│                        │   ┌──────────────────────┐                               │
-│  ┌──────────────────┐ │   │  export_jobs          │                               │
-│  │scheduled_reports  │ │   ├──────────────────────┤                               │
-│  ├──────────────────┤ │   │ id (PK)              │                               │
-│  │ id (PK)          │ │   │ user_id (FK)─────────┼──┘                            │
-│  │ user_id (FK)─────┼─┘   │ template_id (FK)     │                               │
-│  │ template_id (FK) │     │ format               │                                │
-│  │ bookmark_id (FK) │     │ status               │                                │
-│  │ frequency        │     │ toggles (JSONB)      │                                │
-│  │ delivery_channels│     │ file_url             │                                │
-│  │ toggles (JSONB)  │     └──────────────────────┘                                │
-│  │ filters (JSONB)  │                                                             │
+│  └──────┬───────────┘ │                                                           │
+│         │              │   ┌──────────────────────┐                               │
+│         └──────────────┼──►│  dashboard_shares     │                               │
+│                        │   ├──────────────────────┤                               │
+│                        │   │ dashboard_id (FK)    │                                │
+│                        │   │ shared_with (FK)     │                                │
+│                        │   │ shared_by (FK)       │                                │
+│                        │   │ permission           │                                │
+│                        │   └──────────────────────┘                               │
+│                        │                                                           │
+│  ┌──────────────────┐ │   ┌──────────────────────┐                               │
+│  │scheduled_reports  │ │   │  export_jobs          │                               │
+│  ├──────────────────┤ │   ├──────────────────────┤                               │
+│  │ id (PK)          │ │   │ id (PK)              │                               │
+│  │ user_id (FK)─────┼─┘   │ user_id (FK)─────────┼──┘                            │
+│  │ template_id (FK) │     │ template_id (FK)     │                               │
+│  │ dashboard_id (FK)│     │ dashboard_id (FK)    │                                │
+│  │ bookmark_id (FK) │     │ format               │                                │
+│  │ frequency        │     │ status               │                                │
+│  │ delivery_channel │     │ toggles (JSONB)      │                                │
+│  │ toggles (JSONB)  │     │ file_url             │                                │
+│  │ filters (JSONB)  │     └──────────────────────┘                                │
 │  └──────────────────┘                                                             │
 │                                                                                  │
 │                   REPORT ACCESS & NOTIFICATIONS                                  │
@@ -249,15 +262,15 @@ New schema name: **`report_builder`**
 │  └─────────────────────┘  │ delivery_channels[]  │   │ is_read              │    │
 │                            └──────────────────────┘   └──────────────────────┘    │
 │                                                                                  │
-│  ┌──────────────────────┐                                                        │
-│  │report_template_shares │                                                       │
-│  ├──────────────────────┤                                                        │
-│  │ id (PK)              │                                                        │
-│  │ template_id (FK)     │                                                        │
-│  │ shared_with (FK)     │                                                        │
-│  │ shared_by (FK)       │                                                        │
-│  │ permission           │                                                        │
-│  └──────────────────────┘                                                        │
+│  ┌──────────────────────┐  ┌──────────────────────┐                              │
+│  │report_template_shares │  │ client_report_access  │                             │
+│  ├──────────────────────┤  ├──────────────────────┤                              │
+│  │ id (PK)              │  │ id (PK)              │                              │
+│  │ template_id (FK)     │  │ client_id (FK)       │                              │
+│  │ shared_with (FK)     │  │ template_id (FK)     │                              │
+│  │ shared_by (FK)       │  │ is_enabled           │                              │
+│  │ permission           │  │ granted_by           │                              │
+│  └──────────────────────┘  └──────────────────────┘                              │
 │                                                                                  │
 │                   FILTER CASCADE OVERRIDES                                       │
 │  (Overrides report_template_filters base config per client/user)                 │
@@ -273,6 +286,18 @@ New schema name: **`report_builder`**
 │  │ display_order (nullable)     │  │ display_order (nullable)     │              │
 │  │ default_value (nullable)     │  │ default_value (nullable)     │              │
 │  └──────────────────────────────┘  └──────────────────────────────┘              │
+│                                                                                  │
+│                   USER & CLIENT SETTINGS                                         │
+│                                                                                  │
+│  ┌──────────────────────┐  ┌──────────────────────────┐                          │
+│  │  user_preferences     │  │ client_toggle_overrides   │                         │
+│  ├──────────────────────┤  ├──────────────────────────┤                          │
+│  │ id (PK)              │  │ id (PK)                  │                          │
+│  │ user_id (FK)         │  │ client_id (FK)            │                          │
+│  │ client_id (FK)       │  │ toggle_option_id (FK)     │                          │
+│  │ preferences (JSONB)  │  │ is_enabled                │                          │
+│  └──────────────────────┘  │ created_by                │                          │
+│                             └──────────────────────────┘                          │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -345,6 +370,7 @@ Maps logical dataset names to their physical materialized view patterns in the `
 | `date_column` | `VARCHAR(100)` | YES | `'date'` | Name of the date column used for date range filters |
 | `client_id_column` | `VARCHAR(100)` | NO | `'client_id'` | Name of the client_id column |
 | `refresh_frequency_minutes` | `INTEGER` | YES | `60` | How often the materialized view refreshes |
+| `last_refreshed_at` | `TIMESTAMP(6)` | YES | — | When the materialized view was last refreshed (updated by cron job). Frontend shows "Data as of X" |
 | `description` | `TEXT` | YES | — | What this dataset contains |
 | `is_active` | `BOOLEAN` | NO | `true` | Soft-active flag |
 | `created_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | Record creation time |
@@ -825,14 +851,15 @@ Pinned visuals on a personal dashboard.
 
 ### 5.5 `scheduled_reports`
 
-Scheduled email/Telegram report delivery.
+Automated report or dashboard delivery via email or Telegram. Cron job picks up rows where `next_send_at <= NOW()`. Either `template_id` or `dashboard_id` must be set (not both). If `bookmark_id` is set, uses the bookmark's saved filters/toggles instead of the explicit columns.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | `BIGINT` | NO | `autoincrement` | Primary key |
 | `user_id` | `VARCHAR` | NO | — | FK → `beast_insights_v2.users.id` |
 | `client_id` | `BIGINT` | NO | — | FK → `beast_insights_v2.clients.id` |
-| `template_id` | `BIGINT` | NO | — | FK → `report_templates.id` |
+| `template_id` | `BIGINT` | YES | — | FK → `report_templates.id` (nullable — set for report schedules) |
+| `dashboard_id` | `BIGINT` | YES | — | FK → `dashboards.id` (nullable — set for dashboard schedules) |
 | `bookmark_id` | `BIGINT` | YES | — | FK → `bookmarks.id` (optionally schedule a specific bookmark) |
 | `name` | `VARCHAR(200)` | NO | — | Schedule name |
 | `frequency` | `VARCHAR(50)` | NO | — | `daily`, `weekly`, `monthly` |
@@ -840,7 +867,7 @@ Scheduled email/Telegram report delivery.
 | `day_of_month` | `INTEGER` | YES | — | 1-31 for monthly schedules |
 | `time_of_day` | `TIME` | NO | `'08:00'` | When to send |
 | `timezone` | `VARCHAR(100)` | NO | `'America/New_York'` | User's timezone |
-| `delivery_channels` | `VARCHAR(50)[] NOT NULL` | NO | `'{email}'` | Array of delivery channels: `email`, `telegram`, `slack` |
+| `delivery_channel` | `VARCHAR(50)` | NO | `'email'` | Delivery channel: `email`, `telegram`, `slack` |
 | `delivery_target` | `VARCHAR(500)` | YES | — | Email address or chat ID |
 | `filters` | `JSONB` | YES | `'{}'` | Locked slicer state for this schedule |
 | `toggles` | `JSONB` | YES | `'{}'` | Toggle state to apply when generating |
@@ -857,21 +884,24 @@ Scheduled email/Telegram report delivery.
 - `FK`: `scheduled_reports_users_id_fk` → `beast_insights_v2.users.id` ON DELETE CASCADE
 - `FK`: `scheduled_reports_clients_id_fk` → `beast_insights_v2.clients.id` ON DELETE CASCADE
 - `FK`: `scheduled_reports_report_templates_id_fk` → `report_templates.id` ON DELETE CASCADE
+- `FK`: `scheduled_reports_dashboards_id_fk` → `dashboards.id` ON DELETE CASCADE
 - `FK`: `scheduled_reports_bookmarks_id_fk` → `bookmarks.id` ON DELETE SET NULL
+- `CHECK`: `scheduled_reports_target_check` — `template_id IS NOT NULL OR dashboard_id IS NOT NULL`
 - `INDEX`: `scheduled_reports_next_send_at_idx` on `next_send_at` (for cron job pickup)
 
 ---
 
 ### 5.6 `export_jobs`
 
-Tracks export requests (CSV, Excel, PDF).
+Tracks CSV/Excel/PDF export requests for reports or dashboards. Async: user requests → status=pending → processing → completed (file_url set). `toggles` captures toggle state at export time so output matches what user saw.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | `id` | `BIGINT` | NO | `autoincrement` | Primary key |
 | `user_id` | `VARCHAR` | NO | — | FK → `beast_insights_v2.users.id` |
 | `client_id` | `BIGINT` | NO | — | FK → `beast_insights_v2.clients.id` |
-| `template_id` | `BIGINT` | YES | — | FK → `report_templates.id` |
+| `template_id` | `BIGINT` | YES | — | FK → `report_templates.id` (nullable — set for report exports) |
+| `dashboard_id` | `BIGINT` | YES | — | FK → `dashboards.id` (nullable — set for dashboard exports) |
 | `format` | `VARCHAR(50)` | NO | — | `csv`, `excel`, `pdf` |
 | `status` | `VARCHAR(50)` | NO | `'pending'` | `pending`, `processing`, `completed`, `failed` |
 | `filters` | `JSONB` | YES | — | Slicer state at time of export |
@@ -888,6 +918,7 @@ Tracks export requests (CSV, Excel, PDF).
 - `FK`: `export_jobs_users_id_fk` → `beast_insights_v2.users.id` ON DELETE CASCADE
 - `FK`: `export_jobs_clients_id_fk` → `beast_insights_v2.clients.id` ON DELETE CASCADE
 - `FK`: `export_jobs_report_templates_id_fk` → `report_templates.id` ON DELETE SET NULL
+- `FK`: `export_jobs_dashboards_id_fk` → `dashboards.id` ON DELETE SET NULL
 - `INDEX`: `export_jobs_user_id_status_idx` on `(user_id, status)`
 
 ---
@@ -1067,7 +1098,34 @@ Share filter presets with specific users. Shared users can apply the preset to a
 
 ---
 
-### 5.13 `client_template_filter_overrides`
+### 5.13 `dashboard_shares`
+
+Share personal dashboards with specific users. Follows the same pattern as `report_template_shares`, `bookmark_shares`, and `filter_preset_shares`.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | `BIGINT` | NO | `autoincrement` | Primary key |
+| `dashboard_id` | `BIGINT` | NO | — | FK → `dashboards.id` |
+| `shared_with_user_id` | `VARCHAR` | NO | — | FK → `beast_insights_v2.users.id` (recipient) |
+| `shared_by_user_id` | `VARCHAR` | NO | — | FK → `beast_insights_v2.users.id` (sharer) |
+| `client_id` | `BIGINT` | NO | — | FK → `beast_insights_v2.clients.id` |
+| `permission` | `VARCHAR(50)` | NO | `'view'` | Permission level: `view`, `edit`, `duplicate` |
+| `is_active` | `BOOLEAN` | NO | `true` | |
+| `created_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | |
+
+**Constraints:**
+- `PK`: `dashboard_shares_pk` on `id`
+- `FK`: `dashboard_shares_dashboards_id_fk` → `dashboards.id` ON DELETE CASCADE
+- `FK`: `dashboard_shares_shared_with_fk` → `beast_insights_v2.users.id` ON DELETE CASCADE
+- `FK`: `dashboard_shares_shared_by_fk` → `beast_insights_v2.users.id` ON DELETE CASCADE
+- `FK`: `dashboard_shares_clients_id_fk` → `beast_insights_v2.clients.id` ON DELETE CASCADE
+- `CHECK`: `dashboard_shares_permission_check` — `permission IN ('view', 'edit', 'duplicate')`
+- `UNIQUE INDEX`: `dashboard_shares_uq` on `(dashboard_id, shared_with_user_id)`
+- `INDEX`: `dashboard_shares_shared_with_idx` on `shared_with_user_id`
+
+---
+
+### 5.14 `client_template_filter_overrides`
 
 Per-client overrides for template filters. A client admin can hide a filter from a report, reorder filters, or set different defaults for their organization. Equivalent of `beast_insights_v2.client_filter_assignments`.
 
@@ -1097,7 +1155,7 @@ Per-client overrides for template filters. A client admin can hide a filter from
 
 ---
 
-### 5.14 `user_template_filter_overrides`
+### 5.15 `user_template_filter_overrides`
 
 Per-user overrides for template filters — **highest priority** in the 3-level cascade. A user can personalize which filters they see on each report. Equivalent of `beast_insights_v2.user_filter_assignments`.
 
@@ -1137,6 +1195,95 @@ Per-user overrides for template filters — **highest priority** in the 3-level 
 
 Result: final filter config for this user + client + report
 ```
+
+---
+
+### 5.16 `client_report_access`
+
+Controls which reports are visible to each client. Equivalent of `beast_insights_v2.client_features` but dynamic — works for any number of reports without hard-coded boolean columns.
+
+**Default behavior:** If NO row exists for a client + template, the report IS visible (open by default). Rows are created only to explicitly disable reports.
+
+**Access check order:**
+1. `client_report_access` → is report enabled for this client?
+2. `user_report_access` → is report enabled for this user/role?
+3. `client_modules` → is the module enabled? (module reports only)
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | `BIGINT` | NO | `autoincrement` | Primary key |
+| `client_id` | `BIGINT` | NO | — | FK → `beast_insights_v2.clients.id` |
+| `template_id` | `BIGINT` | NO | — | FK → `report_templates.id` |
+| `is_enabled` | `BOOLEAN` | NO | `true` | Whether this report is enabled for this client |
+| `granted_by` | `VARCHAR` | YES | — | FK → `beast_insights_v2.users.id` (admin who set this) |
+| `is_active` | `BOOLEAN` | NO | `true` | Soft-active flag |
+| `created_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | |
+| `updated_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | |
+
+**Constraints:**
+- `PK`: `client_report_access_pk` on `id`
+- `UNIQUE`: `client_report_access_uq` on `(client_id, template_id)`
+- `FK`: `client_report_access_clients_id_fk` → `beast_insights_v2.clients.id` ON DELETE CASCADE
+- `FK`: `client_report_access_report_templates_id_fk` → `report_templates.id` ON DELETE CASCADE
+- `INDEX`: `client_report_access_client_id_idx` on `client_id`
+
+---
+
+### 5.17 `user_preferences`
+
+Per-user platform settings and preferences. Stored as JSONB for flexibility — no schema changes needed when adding new preference keys. Scoped per user + client since the same user may belong to multiple clients.
+
+**Example `preferences` JSONB:**
+```json
+{
+  "default_date_range": "last_30_days",
+  "timezone": "America/New_York",
+  "landing_page_template_key": "command-center",
+  "sidebar_collapsed": false,
+  "notification_delivery": "email"
+}
+```
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | `BIGINT` | NO | `autoincrement` | Primary key |
+| `user_id` | `VARCHAR` | NO | — | FK → `beast_insights_v2.users.id` |
+| `client_id` | `BIGINT` | NO | — | FK → `beast_insights_v2.clients.id` |
+| `preferences` | `JSONB` | NO | `'{}'` | User settings object |
+| `created_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | |
+| `updated_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | |
+
+**Constraints:**
+- `PK`: `user_preferences_pk` on `id`
+- `UNIQUE`: `user_preferences_uq` on `(user_id, client_id)`
+- `FK`: `user_preferences_users_id_fk` → `beast_insights_v2.users.id` ON DELETE CASCADE
+- `FK`: `user_preferences_clients_id_fk` → `beast_insights_v2.clients.id` ON DELETE CASCADE
+
+---
+
+### 5.18 `client_toggle_overrides`
+
+Per-client overrides for metric toggle option visibility. Equivalent of the filter cascade but for toggles.
+
+If a client doesn't have organic data, the "organic" option under `approval_mode` shouldn't show. This table controls that. **Default:** If no row exists, the toggle option IS visible. Rows are created only to explicitly disable options per client.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | `BIGINT` | NO | `autoincrement` | Primary key |
+| `client_id` | `BIGINT` | NO | — | FK → `beast_insights_v2.clients.id` |
+| `toggle_option_id` | `BIGINT` | NO | — | FK → `metric_toggle_options.id` |
+| `is_enabled` | `BOOLEAN` | NO | `true` | Whether this toggle option is visible for this client |
+| `created_by` | `VARCHAR` | YES | — | FK → `beast_insights_v2.users.id` (admin who set this) |
+| `is_active` | `BOOLEAN` | NO | `true` | Soft-active flag |
+| `created_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | |
+| `updated_at` | `TIMESTAMP(6)` | NO | `CURRENT_TIMESTAMP` | |
+
+**Constraints:**
+- `PK`: `client_toggle_overrides_pk` on `id`
+- `UNIQUE`: `client_toggle_overrides_uq` on `(client_id, toggle_option_id)`
+- `FK`: `client_toggle_overrides_clients_id_fk` → `beast_insights_v2.clients.id` ON DELETE CASCADE
+- `FK`: `client_toggle_overrides_toggle_options_id_fk` → `metric_toggle_options.id` ON DELETE CASCADE
+- `INDEX`: `client_toggle_overrides_client_id_idx` on `client_id`
 
 ---
 
@@ -1321,6 +1468,13 @@ No existing tables in `beast_insights_v2` are modified. The `report_builder` sch
 | `client_template_filter_overrides` | `client_template_filter_overrides_client_template_idx` | `(client_id, template_id)` | List client overrides per report |
 | `user_template_filter_overrides` | `user_template_filter_overrides_uq` | unique `(user_id, template_id, dimension_id)` | One override per user/template/dimension |
 | `user_template_filter_overrides` | `user_template_filter_overrides_user_template_idx` | `(user_id, template_id)` | List user overrides per report |
+| `dashboard_shares` | `dashboard_shares_uq` | unique `(dashboard_id, shared_with_user_id)` | Prevent duplicate shares |
+| `dashboard_shares` | `dashboard_shares_shared_with_idx` | `shared_with_user_id` | List dashboards shared with a user |
+| `client_report_access` | `client_report_access_uq` | unique `(client_id, template_id)` | One row per client/report pair |
+| `client_report_access` | `client_report_access_client_id_idx` | `client_id` | List report access for a client |
+| `user_preferences` | `user_preferences_uq` | unique `(user_id, client_id)` | One preferences row per user/client |
+| `client_toggle_overrides` | `client_toggle_overrides_uq` | unique `(client_id, toggle_option_id)` | One override per client/option pair |
+| `client_toggle_overrides` | `client_toggle_overrides_client_id_idx` | `client_id` | List toggle overrides for a client |
 
 ---
 
@@ -1369,6 +1523,13 @@ The `report_builder` schema references the existing `beast_insights_v2` schema i
 | `client_modules` | `client_id` | `beast_insights_v2.clients.id` |
 | `client_modules` | `enabled_by` | `beast_insights_v2.users.id` |
 | `client_dimension_access` | `client_id` | `beast_insights_v2.clients.id` |
+| `dashboard_shares` | `shared_with_user_id` | `beast_insights_v2.users.id` |
+| `dashboard_shares` | `shared_by_user_id` | `beast_insights_v2.users.id` |
+| `dashboard_shares` | `client_id` | `beast_insights_v2.clients.id` |
+| `client_report_access` | `client_id` | `beast_insights_v2.clients.id` |
+| `user_preferences` | `user_id` | `beast_insights_v2.users.id` |
+| `user_preferences` | `client_id` | `beast_insights_v2.clients.id` |
+| `client_toggle_overrides` | `client_id` | `beast_insights_v2.clients.id` |
 
 ### Internal Relationships (within `report_builder`)
 
@@ -1400,6 +1561,12 @@ filter_presets ◄── filter_preset_shares
 notification_rules ◄── notification_log
 
 dashboards ◄── dashboard_tiles
+dashboards ◄── dashboard_shares
+dashboards ◄── scheduled_reports (via dashboard_id)
+dashboards ◄── export_jobs (via dashboard_id)
+
+report_templates ◄── client_report_access
+metric_toggle_options ◄── client_toggle_overrides
 
 dimensions ◄── user_dimension_access
 dimensions ◄── client_dimension_access
@@ -1448,6 +1615,6 @@ Seeding happens during **Milestone 5** (Data Library), but this is what the seed
 
 ## Appendix: Full CREATE TABLE SQL
 
-The full CREATE TABLE SQL is in `sql/001_create_report_builder_schema.sql` (28 tables). See the `sql/` folder for the complete schema.
+The full CREATE TABLE SQL is in `sql/001_create_report_builder_schema.sql` (32 tables). See the `sql/` folder for the complete schema.
 
 > **Note:** The SQL file is the source of truth. If there is any discrepancy between this document and the SQL file, the SQL file takes precedence. Run the SQL file directly against PostgreSQL, then use `prisma db pull` to generate Prisma models.

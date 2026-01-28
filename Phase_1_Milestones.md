@@ -33,9 +33,9 @@ M7  End-to-End Testing & Rollout
 
 ### What This Is
 
-Create the `report_builder` schema in PostgreSQL with all the tables needed for the entire semantic layer. These tables are the containers that hold the metric catalog, dimension catalog, toggle system, report templates, and all future Phase 2-4 features (bookmarks, filter presets, dashboards, scheduled reports, user dimension access, client modules).
+Create the `report_builder` schema in PostgreSQL with all 24 tables needed for the entire semantic layer. These tables are the containers that hold the metric catalog, dimension catalog, toggle system, report templates, and all future Phase 2-4 features (bookmarks, filter presets, dashboards, scheduled reports, export jobs, sharing, notifications, user dimension access, client modules).
 
-We create ALL tables upfront — even those used in later phases — because altering schema mid-flight is disruptive. Tables for Phase 2+ simply remain empty until needed.
+We create ALL 24 tables upfront — even those used in later phases — because altering schema mid-flight is disruptive. Tables for Phase 2+ simply remain empty until needed.
 
 ### Deliverables
 
@@ -44,25 +44,33 @@ We create ALL tables upfront — even those used in later phases — because alt
 | Table | Purpose | Used By |
 |-------|---------|---------|
 | `data_sources` | Maps logical names (e.g., `order_summary`) to actual materialized view patterns (e.g., `reporting.order_summary_{client_id}`). Stores the date column name, refresh frequency, and whether the source is active. | Query Engine (M3) |
-| `metrics` | The full metric catalog. Every metric the platform can compute — its unique key, display name, SQL expression, data type, format pattern, category, whether it's derived, its derivation formula, aggregation type. ~100 rows when seeded. | Query Engine (M3), Data Library (M5) |
-| `dimensions` | The full dimension catalog. Every dimension users can group/filter by — its unique key, display name, SQL column expression, which table it joins to, the join condition. ~30 rows when seeded. | Query Engine (M3), Filter System (M6) |
-| `data_source_metrics` | Junction table: which metrics are valid for which datasets. Prevents invalid queries (e.g., can't ask for `ltv_30d` from `hourly_revenue`). | Query Engine (M3) |
+| `metrics` | The full metric catalog. Every metric the platform can compute — its unique key, display name, SQL expression, data type, format pattern, category, sub-category, decimal places, whether it's derived, its derivation formula, aggregation type, and flags for `supports_comparison` and `supports_trend`. ~100 rows when seeded. | Query Engine (M3), Data Library (M5) |
+| `dimensions` | The full dimension catalog. Every dimension users can group/filter by — its unique key, display name, SQL column expression, optional `filter_column` override, which table it joins to, the join condition. ~30 rows when seeded. | Query Engine (M3), Filter System (M6) |
+| `data_source_metrics` | Junction table: which metrics are valid for which datasets. Supports optional `sql_expression_override` per source. Prevents invalid queries (e.g., can't ask for `ltv_30d` from `hourly_revenue`). | Query Engine (M3) |
 | `data_source_dimensions` | Junction table: which dimensions can be used with which datasets. | Query Engine (M3) |
 | `metric_toggles` | Toggle definitions: the 6 context switches (approval_mode, date_basis, time_granularity, profitability_view, retention_base, display_mode). Stores toggle key, display name, and toggle type. | Query Engine (M3), Slicer Panel (M6) |
 | `metric_toggle_options` | Options per toggle (e.g., approval_mode has: standard, organic, net). Stores which option is the default. | Query Engine (M3), Slicer Panel (M6) |
 | `metric_variants` | The SQL override per metric/toggle/option combination. When `approval_mode = organic`, the `approvals` metric uses `SUM(approvals_organic)` instead of `SUM(approvals)`. ~20 variant rows. | Query Engine (M3) |
-| `report_templates` | Stores the JSON layout for each report. Template key, name, category, the full JSONB layout blob, default filters, default date range, required datasets, navigation section and order. | Template API (M6) |
+| `report_templates` | Stores the JSON layout for each report. Template key, name, category, the full JSONB layout blob, default filters, default date range, required datasets, navigation section and order. Includes `client_id` (nullable — NULL = global template, non-NULL = client-specific override) and `module_key` (ties template to a client module). | Template API (M6) |
 
-**Future Phase Tables (created now, populated later)**
+**Future Phase Tables (created now, populated later) — 15 tables**
 
 | Table | Phase | Purpose |
 |-------|-------|---------|
 | `bookmarks` | Phase 2 | Per-user customizations of a stock report (filters, layout, metrics) |
-| `filter_presets` | Phase 2 | Named, shareable filter combinations |
+| `filter_presets` | Phase 2 | Named filter combinations (sharing via `filter_preset_shares`) |
 | `dashboards` | Phase 2 | Personal dashboard layouts |
 | `dashboard_tiles` | Phase 2 | Pinned tiles on personal dashboards |
-| `scheduled_reports` | Phase 2 | Scheduled email/Telegram delivery configs |
+| `scheduled_reports` | Phase 2 | Scheduled email/Telegram delivery configs. Includes `bookmark_id` (optional) and `toggles` JSONB. |
+| `export_jobs` | Phase 2 | Async export job tracking (CSV/PDF). Includes `toggles` JSONB. |
+| `user_report_access` | Phase 2 | Per-user access control for report templates |
+| `notification_rules` | Phase 2 | Configurable alert rules with `delivery_channels` (text array) |
+| `notification_log` | Phase 2 | Notification history with `is_read` tracking |
+| `report_template_shares` | Phase 2 | Sharing records for report templates between users |
+| `bookmark_shares` | Phase 2 | Sharing records for bookmarks between users |
+| `filter_preset_shares` | Phase 2 | Sharing records for filter presets between users |
 | `user_dimension_access` | Phase 3 | Maps users to allowed dimension values for row-level security |
+| `audit_log` | Phase 3 | Tracks user actions for compliance and debugging |
 | `client_modules` | Phase 4 | Per-client industry module enablement |
 
 **Database creation approach:**
@@ -1023,8 +1031,12 @@ A fully functional native reporting platform:
   Tremor + shadcn UI component library
   Zero changes to existing login, auth, or billing code
 
+24-table schema deployed (9 Phase 1 + 15 future-phase tables ready)
+
 Ready for Phase 2: Custom Report Builder, bookmarks, filter presets,
-                    scheduled delivery, role-based page access
+                    scheduled delivery, export jobs, sharing (reports,
+                    bookmarks, filter presets), notifications, role-based
+                    page access
 ```
 
 ---
