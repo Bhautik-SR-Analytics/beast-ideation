@@ -2,7 +2,7 @@
 
 > **Purpose:** Feed this document to every new AI session. It contains the full understanding of the project, current architecture, what's changing, and where all decisions are documented.
 
-> **Last updated:** 2026-01-27
+> **Last updated:** 2026-01-28
 
 ---
 
@@ -104,27 +104,61 @@ Password: 5QwxpH889T3qansugXQA
 
 ### 5.3 New Schema: `report_builder`
 
-**18 tables total.** All created upfront (Phase 2-4 tables remain empty until needed).
+**28 tables total.** All created upfront (Phase 2-4 tables remain empty until needed).
 
-**Phase 1 tables (populated):**
+**Phase 1 tables (10 tables, populated via seed):**
 
 | Table | Purpose | Rows |
 |-------|---------|------|
 | `data_sources` | Maps logical names to materialized view patterns | ~10 |
-| `metrics` | Full metric catalog with SQL expressions, formats, derivations | ~100 |
-| `dimensions` | Dimension catalog with columns, JOINs, filter types | ~30 |
-| `data_source_metrics` | Junction: which metrics work with which datasets | ~500 |
+| `metrics` | Metric catalog with SQL expressions, comparison/trend flags, decimal places | ~100 |
+| `dimensions` | Dimension + filter catalog with columns, JOINs, filter metadata (is_multiple, data_source, static_options, filter_group, parent_dimension_id, etc.) — supports 8 filter types: multi_select, single_select, date_range, search, boolean, nested, tree, input | ~30 |
+| `data_source_metrics` | Junction: which metrics work with which datasets (with optional `sql_expression_override` per source) | ~500 |
 | `data_source_dimensions` | Junction: which dimensions work with which datasets | ~200 |
 | `metric_toggles` | 6 toggle/slicer definitions | 6 |
 | `metric_toggle_options` | Options per toggle | ~20 |
 | `metric_variants` | SQL overrides per metric/toggle/option | ~50 |
-| `report_templates` | JSON report layout definitions | 11 |
+| `report_templates` | JSON report layouts with 3-layer system (stock/client/custom), `user_id` for ownership, `parent_template_id` for duplication lineage, `version` for change tracking | 11 |
+| `report_template_filters` | Base filter assignments per report — which dimensions appear as filters on each report, with display_order and defaults | ~200 |
 
-**Phase 2 tables (created empty):** `bookmarks`, `filter_presets`, `dashboards`, `dashboard_tiles`, `scheduled_reports`, `export_jobs`, `user_report_access`, `notification_rules`, `notification_log`
+**Phase 2 tables (14 tables, created empty):**
 
-**Phase 3 tables (created empty):** `user_dimension_access`, `dimension_access_audit`
+| Table | Purpose |
+|-------|---------|
+| `bookmarks` | Per-user saved report state (filters, toggles, layout) |
+| `filter_presets` | Named filter combinations |
+| `dashboards` | Personal dashboard layouts |
+| `dashboard_tiles` | Pinned visuals on dashboards |
+| `scheduled_reports` | Automated delivery configs (with `bookmark_id` and `toggles`) |
+| `export_jobs` | Export tracking with filter + toggle state |
+| `user_report_access` | Report visibility per user/role (partial unique indexes) |
+| `notification_rules` | Threshold alerts (multi-channel via `delivery_channels` array) |
+| `notification_log` | Notification delivery history (with `is_read` for in-app) |
+| `report_template_shares` | Share custom reports with specific users (permission: view/edit/duplicate) |
+| `bookmark_shares` | Share bookmarks with specific users |
+| `filter_preset_shares` | Share filter presets with specific users |
+| `client_template_filter_overrides` | Client-level filter cascade overrides (admin hides/reorders/defaults filters per client) |
+| `user_template_filter_overrides` | User-level filter cascade overrides (highest priority — personal filter preferences) |
 
-**Phase 4 tables (created empty):** `client_modules`
+**Phase 3 tables (3 tables, created empty):** `user_dimension_access`, `client_dimension_access`, `dimension_access_audit`
+
+**Phase 4 tables (1 table, created empty):** `client_modules`
+
+**Three-layer template system:**
+- `stock` → common (client_id=NULL, user_id=NULL) — visible to all
+- `client` → client admin created (client_id=SET, user_id=NULL) — visible to all users of that client
+- `custom` → user created (client_id=SET, user_id=SET) — visible only to that user until shared
+
+**3-level filter cascade:**
+1. `report_template_filters` → base config (which filters on which report)
+2. `client_template_filter_overrides` → client admin overrides (NULL = inherit base)
+3. `user_template_filter_overrides` → user personal overrides (NULL = inherit, highest priority)
+
+**Dimension access cascade:**
+1. `client_dimension_access` → client-level restrictions (all users of client)
+2. `user_dimension_access` → user-level restrictions (intersection with client = most restrictive)
+
+**Sharing model:** Custom reports, bookmarks, and filter presets support per-user sharing via junction tables (NOT blanket `is_shared` boolean). Each sharing table stores `shared_with_user_id`, `shared_by_user_id`, `client_id`, and permission level. Query pattern: own items `UNION ALL` shared items.
 
 ### 5.4 Materialized Views (10 Types)
 
@@ -251,12 +285,12 @@ M3, M4, M5 can run in parallel. Backend builds query engine, frontend builds ren
 | Feature | Description |
 |---------|------------|
 | Report access management | Admin controls which reports each user/role can see |
-| Custom report creation | Users build reports from metric/dimension catalog |
-| Filter presets | Named, shareable filter combinations |
-| Bookmarks (save views) | Per-user saved report state (filters, toggles, layout) |
-| Notifications | Threshold-based alerts when metrics cross boundaries |
-| Export | CSV, Excel, PDF |
-| Scheduled delivery | Automated report delivery via email/Telegram |
+| Custom report creation | Users build reports from metric/dimension catalog; share with specific users (view/edit/duplicate) |
+| Filter presets | Named filter combinations; shareable with specific users |
+| Bookmarks (save views) | Per-user saved report state (filters, toggles, layout); shareable with specific users |
+| Notifications | Threshold-based alerts when metrics cross boundaries; multi-channel delivery (email, in-app, Telegram) |
+| Export | CSV, Excel, PDF with filter + toggle state preserved |
+| Scheduled delivery | Automated report delivery via email/Telegram; can schedule a specific bookmark |
 | Personal dashboards | Pin tiles from any report onto a personal dashboard |
 
 ### Phase 3: Row-Level Security
@@ -325,6 +359,13 @@ Opt-in report packs per vertical: High-Risk (6 reports), Telehealth (5), SaaS (5
 | Phase 1 caching | TanStack Query only (no Redis) |
 | Custom components needed | Matrix, Waterfall, Hierarchical Table, Server-paginated Table |
 | Existing tables | Zero modifications to any existing table |
+| Template ownership | `user_id` column on `report_templates` (not just `created_by`) for explicit ownership |
+| Template layers | 3-layer system: stock (common), client (client admin), custom (user-owned) |
+| Template uniqueness | Partial unique indexes scoped by template_type (stock=global, client=per-client, custom=per-user) |
+| Filter cascade | 3-level priority: report_template_filters → client_template_filter_overrides → user_template_filter_overrides |
+| Filter types | 8 types matching existing system: multi_select, single_select, date_range, search, boolean, nested, tree, input |
+| Dimension access | 2-level cascade: client_dimension_access → user_dimension_access (intersection = most restrictive) |
+| Schema size | 28 tables total (up from initial 24) |
 
 ---
 
@@ -351,7 +392,7 @@ Opt-in report packs per vertical: High-Risk (6 reports), Telehealth (5), SaaS (5
 | File | What It Contains |
 |------|-----------------|
 | `Product_Roadmap.md` | **Single source of truth.** All 4 phases, Phase 1 milestones (M1-M7), Phase 2-4 feature details with API endpoints. |
-| `Database_Design_M1.md` | Complete schema design — 18 tables with all columns, types, constraints, ER diagrams, indexes, CREATE TABLE SQL. |
+| `Database_Design_M1.md` | Complete schema design — 24 tables with all columns, types, constraints, ER diagrams, indexes, CREATE TABLE SQL. |
 | `Development_Phase_Plan.md` | Deep technical blueprint — tech stack, database architecture with full SQL, backend architecture (query engine modules, file structure), frontend architecture (components, stores, hooks), all 11 JSON template examples, API endpoints, performance strategy. |
 | `Phase_1_Milestones.md` | Detailed Phase 1 milestones — M1 through M7 with full deliverables, DAX→SQL translation tables, dimension mappings, toggle variant mappings, dataset mappings, seed data specs. |
 
@@ -424,11 +465,19 @@ Every query has `WHERE client_id = {value_from_JWT}` injected automatically. The
 
 ## 15. Current Status
 
-**Planning phase complete.** All architecture decisions made. All documents written and committed.
+**M1 SQL schema complete and expanded to 28 tables.** After analysis of the existing filter system (`beast_insights_v2.filter_definitions`, `filter_options`, 4-level filter assignments, `filter_option_restrictions`) and PBI production reports (18 visual types across 53 reports), the schema was expanded from 24 to 28 tables:
 
-**Next step:** Begin implementation — start with M1 (Database Architecture) by creating the `report_builder` schema using the SQL in `Database_Design_M1.md`.
+**Changes made (2026-01-28):**
+- `report_templates` — added `user_id` (ownership), `parent_template_id` (duplication lineage), `version` (change tracking); added `template_type='client'` for 3-layer system; replaced global unique constraint with 4 partial unique indexes scoped by template type
+- `dimensions` — added 12 columns for filter metadata: `is_multiple`, `data_source`, `options_query`, `static_options`, `default_value`, `filter_group`, `icon`, `parent_dimension_id`, `min_value`, `max_value`, `step_value`, `input_prefix`; expanded `filter_type` to 8 values (added `boolean`, `nested`, `tree`, `input`); added CHECK constraints and 2 new indexes
+- NEW: `report_template_filters` (Phase 1) — base filter assignments per report template (~200 seed rows)
+- NEW: `client_template_filter_overrides` (Phase 2) — client-level filter cascade overrides
+- NEW: `user_template_filter_overrides` (Phase 2) — user-level filter cascade overrides (highest priority)
+- NEW: `client_dimension_access` (Phase 3) — client-level dimension value restrictions
+
+**Next step:** Execute the SQL against the database, run `prisma db pull`, then proceed to M2 (JSON Template Format Specification).
 
 ---
 
 *Beast Insights — Session Context*
-*Last updated: 2026-01-27*
+*Last updated: 2026-01-28*
