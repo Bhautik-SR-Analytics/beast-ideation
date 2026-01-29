@@ -2,7 +2,7 @@
 
 > **Purpose:** Feed this document to every new AI session. It contains the full understanding of the project, current architecture, what's changing, and where all decisions are documented.
 
-> **Last updated:** 2026-01-28
+> **Last updated:** 2026-01-29
 
 ---
 
@@ -104,22 +104,23 @@ Password: 5QwxpH889T3qansugXQA
 
 ### 5.3 New Schema: `report_builder`
 
-**32 tables total.** All created upfront (Phase 2-4 tables remain empty until needed).
+**33 tables total.** All created upfront (Phase 2-4 tables remain empty until needed).
 
-**Phase 1 tables (10 tables, populated via seed):**
+**Phase 1 tables (11 tables, populated via seed):**
 
 | Table | Purpose | Rows |
 |-------|---------|------|
 | `data_sources` | Maps logical names to materialized view patterns | ~10 |
 | `metrics` | Metric catalog with SQL expressions, comparison/trend flags, decimal places | ~100 |
-| `dimensions` | Dimension + filter catalog with columns, JOINs, filter metadata (is_multiple, data_source, static_options, filter_group, parent_dimension_id, etc.) — supports 8 filter types: multi_select, single_select, date_range, search, boolean, nested, tree, input | ~30 |
+| `dimensions` | Dimension + filter catalog (31 columns). Core: columns, JOINs, filter metadata. Options loading: `options_loading` (static/full/paginated/top_n/search_only), `options_cache_ttl`, `options_sort`. Selection: `default_selection` (all/none/specific), `max_selections`. UI: `ui_config` JSONB catch-all (~25 keys). Supports 8 filter types: multi_select, single_select, date_range, search, boolean, nested, tree, input | ~30 |
+| `filter_types` | DB-driven filter type registry. 8 core types seeded. New filter types via INSERT without code changes. Stores display_component (React component name), config_schema (JSON Schema), default_config. | 8 |
 | `data_source_metrics` | Junction: which metrics work with which datasets (with optional `sql_expression_override` per source) | ~500 |
 | `data_source_dimensions` | Junction: which dimensions work with which datasets | ~200 |
 | `metric_toggles` | 6 toggle/slicer definitions | 6 |
 | `metric_toggle_options` | Options per toggle | ~20 |
 | `metric_variants` | SQL overrides per metric/toggle/option | ~50 |
 | `report_templates` | JSON report layouts with 3-layer system (stock/client/custom), `user_id` for ownership, `parent_template_id` for duplication lineage, `version` for change tracking | 11 |
-| `report_template_filters` | Base filter assignments per report — which dimensions appear as filters on each report, with display_order and defaults | ~200 |
+| `report_template_filters` | Base filter assignments per report (15 columns). Which dimensions appear on each report, display_order, defaults. Per-report overrides: `filter_type_override`, `max_selections_override`, `ui_config_override` | ~200 |
 
 **Phase 2 tables (18 tables, created empty):**
 
@@ -407,6 +408,7 @@ Opt-in report packs per vertical: High-Risk (6 reports), Telehealth (5), SaaS (5
 |------|-----------------|
 | `Product_Roadmap.md` | **Single source of truth.** All 4 phases, Phase 1 milestones (M1-M7), Phase 2-4 feature details with API endpoints. |
 | `Database_Design_M1.md` | Complete schema design — 32 tables with all columns, types, constraints, ER diagrams, indexes, CREATE TABLE SQL. |
+| `JSON_Template_Format_M2.md` | **M2 deliverable.** Definitive JSON template specification — TypeScript type definitions for all visual types, section types, slicer panel, cross-cutting concerns, 4 complete stock report examples, validation checklist. |
 | `Development_Phase_Plan.md` | Deep technical blueprint — tech stack, database architecture with full SQL, backend architecture (query engine modules, file structure), frontend architecture (components, stores, hooks), all 11 JSON template examples, API endpoints, performance strategy. |
 | `Phase_1_Milestones.md` | Detailed Phase 1 milestones — M1 through M7 with full deliverables, DAX→SQL translation tables, dimension mappings, toggle variant mappings, dataset mappings, seed data specs. |
 
@@ -429,6 +431,7 @@ Opt-in report packs per vertical: High-Risk (6 reports), Telehealth (5), SaaS (5
 ```
 Product_Roadmap.md              ← Start here. Overview of everything.
 ├── Database_Design_M1.md       ← Detailed table specs (when building schema)
+├── JSON_Template_Format_M2.md  ← JSON template spec (contract between backend & frontend)
 ├── Development_Phase_Plan.md   ← Technical blueprint (when writing code)
 └── Phase_1_Milestones.md       ← Milestone details (when planning sprints)
 ```
@@ -479,7 +482,7 @@ Every query has `WHERE client_id = {value_from_JWT}` injected automatically. The
 
 ## 15. Current Status
 
-**M1 SQL schema complete and expanded to 32 tables.** After two rounds of analysis — the existing filter system, PBI production reports, and a comprehensive gap analysis — the schema was expanded from 24 → 28 → 32 tables.
+**M1 SQL schema complete and expanded to 33 tables.** After three rounds of analysis — the existing filter system, PBI production reports, a comprehensive gap analysis, and architectural review — the schema was expanded from 24 → 28 → 32 → 33 tables.
 
 **Round 1 changes (2026-01-28, committed):**
 - `report_templates` — added `user_id` (ownership), `parent_template_id` (duplication lineage), `version` (change tracking); added `template_type='client'` for 3-layer system; replaced global unique constraint with 4 partial unique indexes scoped by template type
@@ -498,9 +501,96 @@ Every query has `WHERE client_id = {value_from_JWT}` injected automatically. The
 - NEW: `user_preferences` (Phase 2) — per-user platform settings as JSONB (timezone, landing page, sidebar state, etc.)
 - NEW: `client_toggle_overrides` (Phase 2) — per-client toggle option visibility (hide irrelevant options)
 
-**Next step:** Execute the SQL against the database, run `prisma db pull`, then proceed to M2 (JSON Template Format Specification).
+**Round 3 changes (2026-01-28):**
+- NEW: `filter_types` (Phase 1) — DB-driven filter type registry. 8 core types seeded with display_component, config_schema, default_config. New filter types via INSERT, no code changes needed. Replaces the CHECK constraint approach.
+- Table renumbering: Phase 1 = 11 tables (was 10), total = 33 tables (was 32)
+
+**Round 4 changes (2026-01-29) — Comprehensive Filter System Design:**
+
+After deep analysis of 17 filter scenarios (loading, display, search, cascading, caching, validation, etc.), the `dimensions` and `report_template_filters` tables were expanded to ensure no future schema changes needed for filters.
+
+*`dimensions` table — new columns (6):*
+| Column | Type | Default | Purpose |
+|--------|------|---------|---------|
+| `options_loading` | VARCHAR(20) | `'full'` | Backend SQL branching: `static`, `full`, `paginated`, `top_n`, `search_only` |
+| `options_cache_ttl` | INTEGER | `300` | Seconds. Returned in API → frontend TanStack Query `staleTime` |
+| `default_selection` | VARCHAR(20) | `'all'` | WHERE clause logic: `'all'`=no filter, `'none'`=must pick, `'specific'`=use default_value |
+| `max_selections` | INTEGER | NULL | Backend validation. Prevents massive IN clauses. NULL=unlimited |
+| `options_sort` | VARCHAR(20) | `'alphabetical'` | SQL ORDER BY: `alphabetical`, `frequency`, `recent` |
+| `ui_config` | JSONB | `'{}'` | **Catch-all** for ~25 UI presentation keys (never queried by backend) |
+
+*`dimensions.ui_config` JSONB keys (all optional):*
+- Loading: `top_n_count`, `min_search_chars`
+- Boolean: `true_label`, `false_label`, `is_three_state`
+- Input: `input_suffix`, `decimal_places`, `show_slider`
+- Date: `min_date`, `max_date`, `date_presets`
+- Nested/Tree: `max_depth`, `default_expand`, `select_children`, `cascade_behavior`
+- Display: `placeholder`, `tooltip`, `width`, `is_collapsed`, `display_as`, `search_placeholder`
+- Empty: `empty_message`, `hide_when_empty`
+- Advanced: `option_sections`, `cross_filter_counts`
+
+*`report_template_filters` table — new columns (3):*
+| Column | Purpose |
+|--------|---------|
+| `filter_type_override` | Same dimension, different filter_type per report (e.g., multi_select on Revenue, single_select on Explorer) |
+| `max_selections_override` | Per-report selection cap |
+| `ui_config_override` | Per-report UI overrides, deep-merged with dimension's ui_config |
+
+*Design principle:* Columns for anything that affects SQL queries or backend validation. JSONB for UI presentation. This ensures no schema migrations for future filter features.
+
+**M1 verified in production database (2026-01-28):**
+- 32/32 tables present in `report_builder` schema *(NOTE: Round 3 + Round 4 changes need re-apply — filter_types table, dimensions columns, report_template_filters columns)*
+- All column counts match SQL definitions
+- 98 indexes confirmed via `pg_indexes`
+- 83 constraints (FKs + CHECKs) confirmed via `pg_constraint`
+- All 32 tables empty (correct pre-seeding state)
+- Post-M1 step: `prisma db pull` to generate Prisma models (deferred to M3)
+
+**M2 COMPLETE (2026-01-28, Rev 3):**
+
+Created `JSON_Template_Format_M2.md` — the definitive JSON template specification for `report_templates.layout` JSONB column.
+
+*Initial spec:*
+- Standardizes from `Development_Phase_Plan.md` Section 7 templates
+- Key naming: `filterBar` → `slicerPanel`, `toggles` → `slicers`, PascalCase → lowercase visual types, `visualId` on all visuals
+- Two chart modes: series (line/area/bar/combo) vs dimension+metric (stacked/pie/donut)
+- Two table modes: aggregated (dimension+metrics) vs detail (isDetailTable+columns)
+- 4 stock report examples, validation checklist, migration guide
+
+*Gap analysis (Rev 2) — cross-referenced PBI reports (53 reports, 11,828 visuals), DB filter system (157 filters), beastinsights-old frontend:*
+1. Comparison date range — `showComparison`, `comparisonPresets` + Section 3.7
+2. Filter operators — `in`/`not_in` format, "all" = omit filter
+3. Date range presets — added `yesterday`, `last_calendar_week`, `last_4_weeks`, `last_month`
+4. Parameter grouping — `group` field for popover grouping
+5. Column visibility — `defaultVisibleColumns`, `columnPresets` on tables
+6. Nested filter cascading — note on `parent_dimension_id` behavior
+7. Cross-visual filtering — `interactionMode` on BaseVisual + Section 6.7
+8. Chart comparison — `comparison` fields on SeriesConfig + Section 6.8
+
+*Architectural fixes (Rev 3):*
+- **Group-by migration:** Report-level → table-level. `groupByOptions` and `defaultGroupBy` now on `AggregatedTableVisual`, not `SlicerPanel`. `defaultGroupBy` is `string[]` (multiple dimensions can be selected simultaneously).
+- **Card variants (7 types):** `cardVariant` field on CardVisual: `metric` (default big number), `breakdown` (number + list), `donut` (number in donut center), `sparkline` (number + trend line), `summary` (template text), `chart` (number + embedded bar/donut), `insight` (AI-generated text). Each variant has variant-specific fields.
+- **Visual size constraints (Section 4.8):** Sizes determined by section type, NOT by individual visual config. Frontend enforces rules: card_row = auto-fit, full_width = 100%, grid = equal columns, split = 50% each, tabs = 100%. Responsive breakpoints documented. No width/height fields in JSON.
+- **DB-driven filter types:** New `filter_types` table (33rd table) makes filter types extensible without code changes. 8 core types seeded.
+- **Complete Reference Template (Section 7.5):** ~500-line JSON exercising ALL features — 7 visual types, 6 card variants, 7 chart types, 5 section types, 6 slicers, 5 filter displayAs modes, 8 parameters (4 grouped), 5 status filters, 4 cross-source visuals, conditional visibility, comparison overlays, column presets, metric config with conditional colors, 14-column detail table.
+
+---
+
+## 16. Current Progress
+
+| Milestone | Status | Notes |
+|-----------|--------|-------|
+| **M1: Database Schema** | ✅ COMPLETE | 33 tables in `report_builder` schema (32 original + `filter_types` for DB-driven filter registry) |
+| **M2: JSON Template Format** | ✅ COMPLETE | `JSON_Template_Format_M2.md` — Rev 4: filter dependencies, drill-through, empty/error states, URL deep linking, Sales Report template |
+| **M3: Backend Query Engine** | ⏳ NOT STARTED | Express.js query engine, `POST /api/v1/query/batch`, metric/dimension resolution |
+| **M4: Frontend Report Renderer** | ⏳ NOT STARTED | React components, TanStack Query, Zustand stores |
+| **M5: Stock Report Templates** | ⏳ NOT STARTED | Seed 11 JSON templates in DB |
+| **M6: Specialized Reports** | ⏳ NOT STARTED | Matrix, waterfall, server-side pagination |
+| **M7: Performance & Launch** | ⏳ NOT STARTED | <500ms target, error boundaries, mobile |
+
+**Next step:** M3 (Backend Query Engine + Batch API) — build the Express.js query engine that resolves metric/dimension/filter/toggle keys into parameterized SQL.
 
 ---
 
 *Beast Insights — Session Context*
-*Last updated: 2026-01-28*
+*Last updated: 2026-01-29*
