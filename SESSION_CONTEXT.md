@@ -2,7 +2,7 @@
 
 > **Purpose:** Feed this document to every new AI session. It contains the full understanding of the project, current architecture, what's changing, and where all decisions are documented.
 
-> **Last updated:** 2026-01-29
+> **Last updated:** 2026-01-30
 
 ---
 
@@ -21,7 +21,7 @@ Beast Insights (`app.beastinsights.co`) is a **multi-tenant payment analytics pl
 | Repo | Purpose | Status |
 |------|---------|--------|
 | `beast-insights-backend` | Current production backend (Express.js) | Existing, running |
-| `beastinsights-backend` | **New backend** for native reporting | New, empty — brings over auth/login from `beast-insights-backend` |
+| `beastinsights-backend` | **New backend** for native reporting | ✅ SET UP — all routes from `beast-insights-backend` + new query engine |
 | `beastinsights` | **New frontend** for native reporting | New, empty — separate subdomain |
 | `beast-ideation` | Planning & documentation repo | This repo |
 | `beastinsights-old` | Old frontend reference | Design reference for colors, UI patterns |
@@ -581,16 +581,51 @@ Created `JSON_Template_Format_M2.md` — the definitive JSON template specificat
 | Milestone | Status | Notes |
 |-----------|--------|-------|
 | **M1: Database Schema** | ✅ COMPLETE | 33 tables in `report_builder` schema (32 original + `filter_types` for DB-driven filter registry) |
-| **M2: JSON Template Format** | ✅ COMPLETE | `JSON_Template_Format_M2.md` — Rev 4: filter dependencies, drill-through, empty/error states, URL deep linking, Sales Report template |
-| **M3: Backend Query Engine** | ⏳ NOT STARTED | Express.js query engine, `POST /api/v1/query/batch`, metric/dimension resolution |
+| **M2: JSON Template Format** | ✅ COMPLETE | `JSON_Template_Format_M2.md` — Rev 4.1: filter dependencies, drill-through, empty/error states, URL deep linking, Sales Report template |
+| **M3: Backend Query Engine** | ✅ COMPLETE | Query Engine V2 — two endpoints (`/batch`, `/table`), array response format, parallel execution, no Prisma dependency |
 | **M4: Frontend Report Renderer** | ⏳ NOT STARTED | React components, TanStack Query, Zustand stores |
-| **M5: Stock Report Templates** | ⏳ NOT STARTED | Seed 11 JSON templates in DB |
-| **M6: Specialized Reports** | ⏳ NOT STARTED | Matrix, waterfall, server-side pagination |
+| **M5: Data Library** | ✅ COMPLETE | Seed data in DB, Query Engine V2 tested with client 10005, all visual types working |
+| **M6: Reports & Navigation** | ⏳ NOT STARTED | 11 JSON templates, slicer panel, sidebar |
 | **M7: Performance & Launch** | ⏳ NOT STARTED | <500ms target, error boundaries, mobile |
 
-**Next step:** M3 (Backend Query Engine + Batch API) — build the Express.js query engine that resolves metric/dimension/filter/toggle keys into parameterized SQL.
+**M3 Deliverables (2026-01-29 → 2026-01-30):**
+- `beastinsights-backend/` — Full backend repo with all existing routes + new query engine
+- New services: `queryEngineV2.js` (replaces queryService.js), `toggleService.js`
+- New controllers: `queryController.js` (V2 with two endpoints)
+- New routes:
+  - `POST /api/v1/query/batch` — All visuals at once (initial load, filter/toggle changes)
+  - `POST /api/v1/query/table` — Single table (sort, page, groupBy changes)
+- **Removed Prisma dependency** from query engine — uses raw pg pool directly for all queries
+- Array-based response format: `columns` (metadata) + `rows` (2D arrays) — 63% smaller payloads
+- Parallel query execution via Promise.all()
+- Toggle variants correctly applied to metrics
+- Complete API documentation: `COMPLETE_API_DOCUMENTATION.md` (4,000+ lines with curl examples)
+
+**M5 Deliverables (2026-01-29):**
+
+Seed scripts created in `sql/seed/`:
+| File | Contents | Rows (approx) |
+|------|----------|---------------|
+| `00_run_all_seeds.sql` | Master script — runs all seeds in order with TRUNCATE | — |
+| `01_data_sources.sql` | 10 data sources mapping to materialized views | ~10 |
+| `02_toggles.sql` | 6 toggles + ~15 toggle options | ~21 |
+| `03_dimensions.sql` | ~30 dimensions across 10 categories (time, campaign, product, gateway, card, transaction, dispute, affiliate, decline, MID) | ~30 |
+| `04_metrics.sql` | Core metrics — volume, revenue, dispute, rates, profitability, recovery, LTV | ~70 |
+| `04b_metrics_supplemental.sql` | Additional metrics — MID health, cycle counts, growth tracking, alerts, explorer | ~40 |
+| `05_metric_variants.sql` | Toggle-based SQL overrides for approval_mode, date_basis, dollar_count, retention_base | ~25 |
+| `06_data_source_metrics.sql` | Junction mapping: which metrics work with which data sources | ~300 |
+| `07_data_source_dimensions.sql` | Junction mapping: which dimensions work with which data sources | ~200 |
+| `08_filter_types.sql` | 8 filter type definitions (multi_select, single_select, date_range, search, boolean, nested, tree, input) | 8 |
+
+**DAX translation approach:**
+- Extracted measures from `PBI-beastinsights-prod` TMDL files
+- Identified toggle patterns (SWITCH/SELECTEDVALUE) and converted to metric_variants
+- Mapped column expressions to materialized view columns
+- Preserved Power BI naming for consistency
+
+**Next step:** Run seed scripts against database, then test query engine with real data.
 
 ---
 
 *Beast Insights — Session Context*
-*Last updated: 2026-01-29*
+*Last updated: 2026-01-30*
