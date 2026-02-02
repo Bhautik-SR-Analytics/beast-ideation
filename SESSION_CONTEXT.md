@@ -474,6 +474,8 @@ Every query has `WHERE client_id = {value_from_JWT}` injected automatically. The
 ## 14. Working Preferences
 
 - **Never commit or push without asking first.** Always ask before running `git commit` or `git push`.
+- **NEVER use admin credentials for database access.** Only use read-only credentials from `beast-ideation/.env` (beastinsights_ro).
+- **For database changes:** Generate SQL files and let the user execute manually. Never execute write operations directly.
 - Use raw SQL files for schema changes (no Prisma migration).
 - Reference `beastinsights-old` for UI design decisions.
 - Reference `PBI-beastinsights-prod` for DAX measure extraction.
