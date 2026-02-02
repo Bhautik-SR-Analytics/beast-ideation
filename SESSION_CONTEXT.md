@@ -584,7 +584,7 @@ Created `JSON_Template_Format_M2.md` — the definitive JSON template specificat
 | **M2: JSON Template Format** | ✅ COMPLETE | `JSON_Template_Format_M2.md` — Rev 4.1: filter dependencies, drill-through, empty/error states, URL deep linking, Sales Report template |
 | **M3: Backend Query Engine** | ✅ COMPLETE | Query Engine V2 — two endpoints (`/batch`, `/table`), array response format, parallel execution, no Prisma dependency |
 | **M4: Frontend Report Renderer** | ⏳ NOT STARTED | React components, TanStack Query, Zustand stores |
-| **M5: Data Library** | ✅ COMPLETE | Seed data in DB, Query Engine V2 tested with client 10005, all visual types working |
+| **M5: Data Library** | ⚠️ PARTIAL | 54/109 metrics working, 55 need DB fixes (wrong data source mappings or missing columns) |
 | **M6: Reports & Navigation** | ⏳ NOT STARTED | 11 JSON templates, slicer panel, sidebar |
 | **M7: Performance & Launch** | ⏳ NOT STARTED | <500ms target, error boundaries, mobile |
 
@@ -600,6 +600,15 @@ Created `JSON_Template_Format_M2.md` — the definitive JSON template specificat
 - Parallel query execution via Promise.all()
 - Toggle variants correctly applied to metrics
 - Complete API documentation: `COMPLETE_API_DOCUMENTATION.md` (4,000+ lines with curl examples)
+- Comprehensive test suite: `tests/comprehensiveM3M5.test.js` (792 lines, 107 tests)
+
+**M3 Test Results (2026-01-30):**
+- 96.3% pass rate (103/107 tests)
+- All query engine code working correctly
+- Toggle variants (standard/organic/net) confirmed working
+- Parallel execution: 5 visuals in ~5 seconds
+- Multi-dimension groupBy (up to 3 dimensions) working
+- Pagination, sorting, filters all working
 
 **M5 Deliverables (2026-01-29):**
 
@@ -623,7 +632,43 @@ Seed scripts created in `sql/seed/`:
 - Mapped column expressions to materialized view columns
 - Preserved Power BI naming for consistency
 
-**Next step:** Run seed scripts against database, then test query engine with real data.
+**M5 Test Results (2026-01-30) — Data Library Gaps Found:**
+
+Comprehensive testing revealed database data library issues:
+
+*Working (54/109 metrics):*
+- Volume: `attempts`, `approvals`, `net_approvals`, `approvals_organic`
+- Revenue: `revenue`, `revenue_initials`, `revenue_rebills`
+- Disputes: `cb`, `cb_dollar`, `refund`, `refund_dollar`
+- Rates: `approval_rate`, `cb_rate`, `refund_rate`
+
+*Failing (55/109 metrics) — need DB fixes:*
+
+| Category | Metrics | Issue |
+|----------|---------|-------|
+| Card Brand | `approvals_visa`, `cb_rate_visa`, `cb_rate_mastercard` | No card brand columns in order_summary |
+| Profitability | `processing_fees`, `cb_fees`, `reserve`, `gross_profit` | No profitability columns |
+| Recovery | `recovered`, `recovered_dollar`, `recovery_rate` | Wrong data source |
+| MID Health | `mid_volume`, `mid_cb_rate`, `mid_utilization` | Should use mid_summary view |
+| LTV/Retention | `ltv_30`, `ltv_60`, `retention_c1` | Should use cohort_summary view |
+| Time Windows | `cb_7d`, `cb_14d`, `refund_7d` | Should use cb_refund_alert view |
+| Alerts | `rdr_dollar`, `ethoca_dollar`, `alert_count` | Should use alert_summary view |
+| Hourly | `today_revenue`, `avg_7d_revenue` | Should use hourly_revenue view |
+
+*Failing dimensions (4/31):*
+- `hour` — in hourly_revenue view
+- `decline_group` — in decline_recovery view
+- `month_year` — column doesn't exist
+- `health_tag` — in mid_summary view
+
+*Root cause:* `data_source_metrics` junction table only has 130 mappings. Many metrics have no data source mapping or reference columns from wrong view.
+
+*Fix required:*
+1. Complete `data_source_metrics` mappings for all metrics
+2. Update metric SQL expressions to reference correct columns
+3. Or add missing columns to `order_summary` materialized view
+
+**Next step:** Fix data library gaps in database, then re-run comprehensive tests.
 
 ---
 
