@@ -2,7 +2,7 @@
 
 > **Purpose:** Feed this document to every new AI session. It contains the full understanding of the project, current architecture, what's changing, and where all decisions are documented.
 
-> **Last updated:** 2026-02-02
+> **Last updated:** 2026-02-10
 
 ---
 
@@ -39,8 +39,8 @@ Beast Insights (`app.beastinsights.co`) is a **multi-tenant payment analytics pl
 | Analytics UI | **Tremor** | Cards, charts, tables — primary visual library |
 | Navigation UI | **shadcn/ui** + Radix + Tailwind | Sidebar, inputs, popovers, form elements |
 | Tables | TanStack React Table v8 | Tremor's Table wraps this |
-| State (client) | **Zustand** | All client state: auth, filters, UI state |
-| State (server) | **TanStack Query** | Data fetching + frontend cache (5-min stale) |
+| State (client) | **Redux Toolkit** | All client state: auth, filters, UI state, report slicers |
+| State (server) | **RTK Query** | Data fetching + frontend cache (5-min stale), part of Redux Toolkit |
 | Backend | Express.js 4.19 | Repo: `beastinsights-backend` |
 | ORM | Prisma 5.19 | CRUD operations only (users, clients, templates) |
 | Query Engine | `pg` driver directly | Dynamic SQL generation — NOT through Prisma |
@@ -48,8 +48,9 @@ Beast Insights (`app.beastinsights.co`) is a **multi-tenant payment analytics pl
 | Auth | JWT HS512 + bcrypt | Brought over from `beast-insights-backend` |
 
 **What's NOT in the stack:**
-- No Redux (Zustand replaces it entirely in the new repo)
-- No Redis in Phase 1 (TanStack Query handles frontend caching; Redis is a future optimization)
+- No Zustand (Redux Toolkit handles all state)
+- No TanStack Query (RTK Query handles data fetching)
+- No Redis in Phase 1 (RTK Query handles frontend caching; Redis is a future optimization)
 - No Recharts (Tremor replaces it)
 - No Power BI anything
 
@@ -356,8 +357,8 @@ Opt-in report packs per vertical: High-Risk (6 reports), Telehealth (5), SaaS (5
 | Frontend framework | Next.js 16 + React 19 |
 | Analytics UI | Tremor (not Recharts) |
 | Navigation UI | shadcn/ui |
-| State management | Zustand (not Redux) |
-| Server state | TanStack Query |
+| State management | Redux Toolkit |
+| Server state | RTK Query (part of Redux Toolkit) |
 | Database changes | Raw SQL + `prisma db pull` (no Prisma migration) |
 | Backend repo | New `beastinsights-backend` (brings auth from old repo) |
 | Frontend repo | New `beastinsights` (empty, separate subdomain) |
@@ -366,7 +367,7 @@ Opt-in report packs per vertical: High-Risk (6 reports), Telehealth (5), SaaS (5
 | Design reference | `beastinsights-old` for colors and UI patterns |
 | Query security | Parameterized SQL, client_id from JWT only, column whitelist |
 | Performance target | <500ms page load |
-| Phase 1 caching | TanStack Query only (no Redis) |
+| Phase 1 caching | RTK Query only (no Redis) |
 | Custom components needed | Matrix, Waterfall, Hierarchical Table, Server-paginated Table |
 | Existing tables | Zero modifications to any existing table |
 | Template ownership | `user_id` column on `report_templates` (not just `created_by`) for explicit ownership |
@@ -585,7 +586,7 @@ Created `JSON_Template_Format_M2.md` — the definitive JSON template specificat
 | **M1: Database Schema** | ✅ COMPLETE | 33 tables in `report_builder` schema (32 original + `filter_types` for DB-driven filter registry) |
 | **M2: JSON Template Format** | ✅ COMPLETE | `JSON_Template_Format_M2.md` — Rev 4.1: filter dependencies, drill-through, empty/error states, URL deep linking, Sales Report template |
 | **M3: Backend Query Engine** | ✅ COMPLETE | Query Engine V2 — two endpoints (`/batch`, `/table`), array response format, parallel execution, no Prisma dependency |
-| **M4: Frontend Report Renderer** | ⏳ NOT STARTED | React components, TanStack Query, Zustand stores |
+| **M4: Frontend Report Renderer** | ⏳ IN PROGRESS | New ReportRenderer + ReportVisual + ReportFilterBar pipeline. Filters, group-by, charts, tables working. Sales Trend sparkline broken (see `M4_NEW_RENDERER_IMPLEMENTATION.md`) |
 | **M5: Data Library** | ✅ COMPLETE | 64 active metrics, 27 active dimensions, 6 toggles — all tested and working |
 | **M6: Reports & Navigation** | ⏳ NOT STARTED | 11 JSON templates, slicer panel, sidebar |
 | **M7: Performance & Launch** | ⏳ NOT STARTED | <500ms target, error boundaries, mobile |
@@ -678,7 +679,45 @@ After comprehensive testing and database fixes via `sql/fix_m5_data_library.sql`
 - Disabled metrics referencing unavailable columns
 - Added missing data_source_metrics mappings
 
+**M4 Frontend Progress (2026-02-04 → 2026-02-10):**
+
+Visual components rebuilt with Power BI-style design. Initial implementation didn't match Power BI reference images. **New approach (2026-02-10):** Replaced broken `ReportRendererV3` + `VisualRenderer` pipeline with new `ReportRenderer` + `ReportVisual` + `ReportFilterBar` architecture that works directly with backend columnar format (no lossy transforms).
+
+*New components (2026-02-10):*
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `ReportRenderer.tsx` | ✅ Working | Main orchestrator: filter bar, data fetching, section grid, visual rendering |
+| `ReportVisual.tsx` | ⚠️ Sparkline broken | Visual dispatcher: KPI cards, charts, tables, matrices |
+| `ReportFilterBar.tsx` | ✅ Working | DateRangePicker + MoreFiltersPopover + FilterChips + Refresh |
+| `page.tsx` (templateKey) | ✅ Working | Dynamic client ID from Redux, raw data pass-through |
+
+*Backend fixes (2026-02-10):*
+| Fix | File | Details |
+|-----|------|---------|
+| Date preset resolution | `devRoutes.js` | Added `resolveDatePreset()` — converts `last_30_days` → `{from, to}` dates |
+| Dimension filter `'eq'` operator | `queryEngineV2.js` | `buildWhereClause` now handles `'eq'` (was silently skipping single-value filters) |
+| GroupBy overrides | `devRoutes.js` | Route accepts `groupByOverrides` → backend applies to table queries |
+
+*What's working:*
+- Date range changes → different data returned (verified via curl)
+- Dimension filters → correct filtering (verified: campaign_id=61 → 8 approvals vs 26 unfiltered)
+- GroupBy overrides → correct regrouping (verified: product_name → 6 rows vs campaign → 5 rows)
+- KPI Distribution card ✅
+- All chart types (area, bar, line, donut) ✅
+- Tables with group-by, sparklines, totals, pagination ✅
+- Matrix/pivot ✅
+
+*What's broken:*
+- **Sales Trend sparkline card** — shows only title "Sales Trend", no hero value, no chart, no legend. Backend data verified correct. Multiple rendering approaches tried (direct Recharts, SparkAreaChart, ResponsiveContainer). Suspected client-side rendering error. Needs browser DevTools debugging.
+
+*Progress documents:* `M4_UI_MIGRATION_PROGRESS.md`, `M4_NEW_RENDERER_IMPLEMENTATION.md`
+
+*Next steps:*
+1. Debug Sales Trend sparkline via browser DevTools console
+2. Style refinement to match Power BI reference images
+3. Build remaining 10 report templates (M6)
+
 ---
 
 *Beast Insights — Session Context*
-*Last updated: 2026-02-02*
+*Last updated: 2026-02-10*
