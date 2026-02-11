@@ -3,6 +3,7 @@ beastinsights-old/
 beastinsights-backend/
 beast-insights-backend/
 PBI-beastinsights-prod/
+tremor-blocks/
 sql/
 .env
 
