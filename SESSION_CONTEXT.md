@@ -2,7 +2,7 @@
 
 > **Purpose:** Feed this document to every new AI session. It contains the full understanding of the project, current architecture, what's changing, and where all decisions are documented.
 
-> **Last updated:** 2026-02-10
+> **Last updated:** 2026-02-12
 
 ---
 
@@ -586,7 +586,7 @@ Created `JSON_Template_Format_M2.md` — the definitive JSON template specificat
 | **M1: Database Schema** | ✅ COMPLETE | 33 tables in `report_builder` schema (32 original + `filter_types` for DB-driven filter registry) |
 | **M2: JSON Template Format** | ✅ COMPLETE | `JSON_Template_Format_M2.md` — Rev 4.1: filter dependencies, drill-through, empty/error states, URL deep linking, Sales Report template |
 | **M3: Backend Query Engine** | ✅ COMPLETE | Query Engine V2 — two endpoints (`/batch`, `/table`), array response format, parallel execution, no Prisma dependency |
-| **M4: Frontend Report Renderer** | ⏳ IN PROGRESS | New ReportRenderer + ReportVisual + ReportFilterBar pipeline. Filters, group-by, charts, tables working. Sales Trend sparkline broken (see `M4_NEW_RENDERER_IMPLEMENTATION.md`) |
+| **M4: Frontend Report Renderer** | ⏳ IN PROGRESS | ReportRenderer + ReportVisual (flat default) + ReportVisualStacked (backup) + ReportFilterBar. All visual types working. Custom cell types: composite (count+dollar), donut_percent. Table features: sticky columns, drag-drop reorder, infinite scroll, column resize. |
 | **M5: Data Library** | ✅ COMPLETE | 64 active metrics, 27 active dimensions, 6 toggles — all tested and working |
 | **M6: Reports & Navigation** | ⏳ NOT STARTED | 11 JSON templates, slicer panel, sidebar |
 | **M7: Performance & Launch** | ⏳ NOT STARTED | <500ms target, error boundaries, mobile |
@@ -679,17 +679,34 @@ After comprehensive testing and database fixes via `sql/fix_m5_data_library.sql`
 - Disabled metrics referencing unavailable columns
 - Added missing data_source_metrics mappings
 
-**M4 Frontend Progress (2026-02-04 → 2026-02-10):**
+**M4 Frontend Progress (2026-02-04 → 2026-02-12):**
 
-Visual components rebuilt with Power BI-style design. Initial implementation didn't match Power BI reference images. **New approach (2026-02-10):** Replaced broken `ReportRendererV3` + `VisualRenderer` pipeline with new `ReportRenderer` + `ReportVisual` + `ReportFilterBar` architecture that works directly with backend columnar format (no lossy transforms).
+Visual components rebuilt with Power BI-style design. **New approach (2026-02-10):** Replaced broken `ReportRendererV3` + `VisualRenderer` pipeline with new `ReportRenderer` + `ReportVisual` + `ReportFilterBar` architecture that works directly with backend columnar format (no lossy transforms).
 
-*New components (2026-02-10):*
+*Core components:*
 | Component | Status | Notes |
 |-----------|--------|-------|
 | `ReportRenderer.tsx` | ✅ Working | Main orchestrator: filter bar, data fetching, section grid, visual rendering |
-| `ReportVisual.tsx` | ⚠️ Sparkline broken | Visual dispatcher: KPI cards, charts, tables, matrices |
+| `ReportVisual.tsx` | ✅ Working | **Default (flat)** visual dispatcher — inline composite, donut on approval_rate only |
+| `ReportVisualStacked.tsx` | ✅ Backup | **Stacked** visual dispatcher — two-row composite, donut on all % columns |
 | `ReportFilterBar.tsx` | ✅ Working | DateRangePicker + MoreFiltersPopover + FilterChips + Refresh |
 | `page.tsx` (templateKey) | ✅ Working | Dynamic client ID from Redux, raw data pass-through |
+
+*Custom cell types (2026-02-12):*
+| Cell Type | JSON Config | Rendering |
+|-----------|------------|-----------|
+| `composite` | `compositeConfig: { primary, secondary }` | Flat: `$45,678 1.2K` inline. Stacked: two rows. |
+| `donut_percent` | `format: "0.00%"` | `approval_rate` → blue donut ring + text. Others → plain text with tooltip. |
+
+*Table enhancements (2026-02-12):*
+| Feature | Implementation |
+|---------|---------------|
+| Sticky first column | `sticky left-0` with z-index layering (z-30/z-20/z-10/z-15/z-5) |
+| Column resize guard | Only dimension columns resizable; `wasResizingRef` prevents sort on drag |
+| Column reordering | HTML5 drag-and-drop in ColumnSelector; `GripVertical` icon, `columnOrder` state |
+| Compact count format | `compactNum()` → 1K, 1.2M, displayed as text-[9px] suffix |
+| Totals border | `border-t border-b border-border` (global CSS variable) |
+| Smaller font (flat) | `[&_th]:py-2.5 [&_th]:text-xs [&_td]:py-1.5 [&_td]:text-xs` |
 
 *Backend fixes (2026-02-10):*
 | Fix | File | Details |
@@ -697,27 +714,26 @@ Visual components rebuilt with Power BI-style design. Initial implementation did
 | Date preset resolution | `devRoutes.js` | Added `resolveDatePreset()` — converts `last_30_days` → `{from, to}` dates |
 | Dimension filter `'eq'` operator | `queryEngineV2.js` | `buildWhereClause` now handles `'eq'` (was silently skipping single-value filters) |
 | GroupBy overrides | `devRoutes.js` | Route accepts `groupByOverrides` → backend applies to table queries |
+| Composite metric extraction | `devRoutes.js` | Extracts both `primary.key` and `secondary.key` from composite columns |
 
 *What's working:*
-- Date range changes → different data returned (verified via curl)
-- Dimension filters → correct filtering (verified: campaign_id=61 → 8 approvals vs 26 unfiltered)
-- GroupBy overrides → correct regrouping (verified: product_name → 6 rows vs campaign → 5 rows)
-- KPI Distribution card ✅
+- Date range changes → different data returned
+- Dimension filters → correct filtering
+- GroupBy overrides → correct regrouping
+- KPI cards (all 7 variants) ✅
 - All chart types (area, bar, line, donut) ✅
-- Tables with group-by, sparklines, totals, pagination ✅
+- Tables with composite cells, donut %, group-by, sparklines, totals, infinite scroll ✅
 - Matrix/pivot ✅
-
-*What's broken:*
-- **Sales Trend sparkline card** — shows only title "Sales Trend", no hero value, no chart, no legend. Backend data verified correct. Multiple rendering approaches tried (direct Recharts, SparkAreaChart, ResponsiveContainer). Suspected client-side rendering error. Needs browser DevTools debugging.
-
-*Progress documents:* `M4_UI_MIGRATION_PROGRESS.md`, `M4_NEW_RENDERER_IMPLEMENTATION.md`
+- Sticky first column on horizontal scroll ✅
+- Drag-and-drop column reordering ✅
+- DonutPercentRing matching tremor-blocks ProgressCircle ✅
 
 *Next steps:*
-1. Debug Sales Trend sparkline via browser DevTools console
-2. Style refinement to match Power BI reference images
-3. Build remaining 10 report templates (M6)
+1. Build remaining 10 report templates (M6)
+2. Style refinement across all report types
+3. Performance optimization toward <500ms target (M7)
 
 ---
 
 *Beast Insights — Session Context*
-*Last updated: 2026-02-10*
+*Last updated: 2026-02-12*
