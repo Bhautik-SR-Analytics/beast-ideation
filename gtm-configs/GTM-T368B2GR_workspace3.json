@@ -1,0 +1,153 @@
+{
+    "exportFormatVersion": 2,
+    "exportTime": "2026-03-11 06:01:07",
+    "containerVersion": {
+        "path": "accounts/6242293578/containers/245834522/versions/0",
+        "accountId": "6242293578",
+        "containerId": "245834522",
+        "containerVersionId": "0",
+        "container": {
+            "path": "accounts/6242293578/containers/245834522",
+            "accountId": "6242293578",
+            "containerId": "245834522",
+            "name": "beastinsights-v2",
+            "publicId": "GTM-T368B2GR",
+            "usageContext": [
+                "SERVER"
+            ],
+            "fingerprint": "1773136748165",
+            "tagManagerUrl": "https://tagmanager.google.com/#/container/accounts/6242293578/containers/245834522/workspaces?apiLink=container",
+            "features": {
+                "supportUserPermissions": true,
+                "supportEnvironments": true,
+                "supportWorkspaces": true,
+                "supportGtagConfigs": false,
+                "supportBuiltInVariables": true,
+                "supportClients": true,
+                "supportFolders": true,
+                "supportTags": true,
+                "supportTemplates": true,
+                "supportTriggers": true,
+                "supportVariables": true,
+                "supportVersions": true,
+                "supportZones": true,
+                "supportTransformations": true
+            },
+            "tagIds": [
+                "GTM-T368B2GR"
+            ]
+        },
+        "tag": [
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "tagId": "4",
+                "name": "GA4 - Forward All Events",
+                "type": "sgtmgaaw",
+                "parameter": [
+                    {
+                        "type": "BOOLEAN",
+                        "key": "redactVisitorIp",
+                        "value": "false"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "epToIncludeDropdown",
+                        "value": "all"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "upToIncludeDropdown",
+                        "value": "all"
+                    }
+                ],
+                "fingerprint": "1773149916342",
+                "firingTriggerId": [
+                    "2147479574"
+                ],
+                "tagFiringOption": "ONCE_PER_EVENT",
+                "monitoringMetadata": {
+                    "type": "MAP"
+                },
+                "consentSettings": {
+                    "consentStatus": "NOT_SET"
+                }
+            }
+        ],
+        "variable": [
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "6",
+                "name": "ED - test",
+                "type": "ed",
+                "parameter": [
+                    {
+                        "type": "BOOLEAN",
+                        "key": "setDefaultValue",
+                        "value": "false"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "keyPath",
+                        "value": "test"
+                    }
+                ],
+                "fingerprint": "1773208850010",
+                "formatValue": {}
+            }
+        ],
+        "builtInVariable": [
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "type": "EVENT_NAME",
+                "name": "Event Name"
+            }
+        ],
+        "fingerprint": "1773208867803",
+        "tagManagerUrl": "https://tagmanager.google.com/#/versions/accounts/6242293578/containers/245834522/versions/0?apiLink=version",
+        "client": [
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "clientId": "1",
+                "name": "GA4",
+                "type": "gaaw_client",
+                "parameter": [
+                    {
+                        "type": "BOOLEAN",
+                        "key": "activateDefaultPaths",
+                        "value": "true"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "cookieManagement",
+                        "value": "server"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "cookieName",
+                        "value": "FPID"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "cookieDomain",
+                        "value": "auto"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "cookiePath",
+                        "value": "/"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "cookieMaxAgeInSec",
+                        "value": "63072000"
+                    }
+                ],
+                "fingerprint": "1773136748167"
+            }
+        ]
+    }
+}

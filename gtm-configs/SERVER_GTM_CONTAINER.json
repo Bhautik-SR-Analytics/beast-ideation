@@ -1,0 +1,470 @@
+{
+    "exportFormatVersion": 2,
+    "exportTime": "2026-03-11 06:01:07",
+    "containerVersion": {
+        "path": "accounts/6242293578/containers/245834522/versions/0",
+        "accountId": "6242293578",
+        "containerId": "245834522",
+        "containerVersionId": "0",
+        "container": {
+            "path": "accounts/6242293578/containers/245834522",
+            "accountId": "6242293578",
+            "containerId": "245834522",
+            "name": "beastinsights-v2",
+            "publicId": "GTM-T368B2GR",
+            "usageContext": [
+                "SERVER"
+            ],
+            "fingerprint": "1773136748165",
+            "tagManagerUrl": "https://tagmanager.google.com/#/container/accounts/6242293578/containers/245834522/workspaces?apiLink=container",
+            "features": {
+                "supportUserPermissions": true,
+                "supportEnvironments": true,
+                "supportWorkspaces": true,
+                "supportGtagConfigs": false,
+                "supportBuiltInVariables": true,
+                "supportClients": true,
+                "supportFolders": true,
+                "supportTags": true,
+                "supportTemplates": true,
+                "supportTriggers": true,
+                "supportVariables": true,
+                "supportVersions": true,
+                "supportZones": true,
+                "supportTransformations": true
+            },
+            "tagIds": [
+                "GTM-T368B2GR"
+            ]
+        },
+        "tag": [
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "tagId": "4",
+                "name": "GA4 - Forward All Events",
+                "type": "sgtmgaaw",
+                "parameter": [
+                    {
+                        "type": "BOOLEAN",
+                        "key": "redactVisitorIp",
+                        "value": "false"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "epToIncludeDropdown",
+                        "value": "all"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "upToIncludeDropdown",
+                        "value": "all"
+                    }
+                ],
+                "fingerprint": "1773149916342",
+                "firingTriggerId": [
+                    "2147479574"
+                ],
+                "tagFiringOption": "ONCE_PER_EVENT",
+                "monitoringMetadata": {
+                    "type": "MAP"
+                },
+                "consentSettings": {
+                    "consentStatus": "NOT_SET"
+                }
+            }
+        ],
+        "variable": [
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "10",
+                "name": "ED - client_id",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "client_id" }
+                ],
+                "fingerprint": "1773208850010",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "11",
+                "name": "ED - user_role",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "user_role" }
+                ],
+                "fingerprint": "1773208850011",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "12",
+                "name": "ED - user_id",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "user_id" }
+                ],
+                "fingerprint": "1773208850012",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "13",
+                "name": "ED - report_key",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "report_key" }
+                ],
+                "fingerprint": "1773208850013",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "14",
+                "name": "ED - report_name",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "report_name" }
+                ],
+                "fingerprint": "1773208850014",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "15",
+                "name": "ED - report_type",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "report_type" }
+                ],
+                "fingerprint": "1773208850015",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "16",
+                "name": "ED - visual_type",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "visual_type" }
+                ],
+                "fingerprint": "1773208850016",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "17",
+                "name": "ED - visual_id",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "visual_id" }
+                ],
+                "fingerprint": "1773208850017",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "18",
+                "name": "ED - action",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "action" }
+                ],
+                "fingerprint": "1773208850018",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "19",
+                "name": "ED - filter_type",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "filter_type" }
+                ],
+                "fingerprint": "1773208850019",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "20",
+                "name": "ED - filter_key",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "filter_key" }
+                ],
+                "fingerprint": "1773208850020",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "21",
+                "name": "ED - chart_type",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "chart_type" }
+                ],
+                "fingerprint": "1773208850021",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "22",
+                "name": "ED - builder_type",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "builder_type" }
+                ],
+                "fingerprint": "1773208850022",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "23",
+                "name": "ED - duration_ms",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "duration_ms" }
+                ],
+                "fingerprint": "1773208850023",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "24",
+                "name": "ED - error_type",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "error_type" }
+                ],
+                "fingerprint": "1773208850024",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "25",
+                "name": "ED - error_message",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "error_message" }
+                ],
+                "fingerprint": "1773208850025",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "26",
+                "name": "ED - kpi_variant",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "kpi_variant" }
+                ],
+                "fingerprint": "1773208850026",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "27",
+                "name": "ED - metric_key",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "metric_key" }
+                ],
+                "fingerprint": "1773208850027",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "28",
+                "name": "ED - visual_preset",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "visual_preset" }
+                ],
+                "fingerprint": "1773208850028",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "29",
+                "name": "ED - visual_count",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "visual_count" }
+                ],
+                "fingerprint": "1773208850029",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "30",
+                "name": "ED - search_term",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "search_term" }
+                ],
+                "fingerprint": "1773208850030",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "31",
+                "name": "ED - search_location",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "search_location" }
+                ],
+                "fingerprint": "1773208850031",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "32",
+                "name": "ED - granularity",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "granularity" }
+                ],
+                "fingerprint": "1773208850032",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "33",
+                "name": "ED - scroll_percent",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "scroll_percent" }
+                ],
+                "fingerprint": "1773208850033",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "34",
+                "name": "ED - format",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "format" }
+                ],
+                "fingerprint": "1773208850034",
+                "formatValue": {}
+            },
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "variableId": "35",
+                "name": "ED - provider",
+                "type": "ed",
+                "parameter": [
+                    { "type": "BOOLEAN", "key": "setDefaultValue", "value": "false" },
+                    { "type": "TEMPLATE", "key": "keyPath", "value": "provider" }
+                ],
+                "fingerprint": "1773208850035",
+                "formatValue": {}
+            }
+        ],
+        "builtInVariable": [
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "type": "EVENT_NAME",
+                "name": "Event Name"
+            }
+        ],
+        "fingerprint": "1773208867803",
+        "tagManagerUrl": "https://tagmanager.google.com/#/versions/accounts/6242293578/containers/245834522/versions/0?apiLink=version",
+        "client": [
+            {
+                "accountId": "6242293578",
+                "containerId": "245834522",
+                "clientId": "1",
+                "name": "GA4",
+                "type": "gaaw_client",
+                "parameter": [
+                    {
+                        "type": "BOOLEAN",
+                        "key": "activateDefaultPaths",
+                        "value": "true"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "cookieManagement",
+                        "value": "server"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "cookieName",
+                        "value": "FPID"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "cookieDomain",
+                        "value": "auto"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "cookiePath",
+                        "value": "/"
+                    },
+                    {
+                        "type": "TEMPLATE",
+                        "key": "cookieMaxAgeInSec",
+                        "value": "63072000"
+                    }
+                ],
+                "fingerprint": "1773136748167"
+            }
+        ]
+    }
+}
